@@ -1,0 +1,15 @@
+<?php
+declare(strict_types=1);
+
+return [
+    'google_client_id' => 'INSERISCI_CLIENT_ID',
+    'google_client_secret' => 'INSERISCI_CLIENT_SECRET',
+    'google_redirect_uri' => 'https://gussoni.sviluppo.host/archivio/api/integrations/oauth_callback.php',
+    'token_encryption_key' => 'CAMBIA_CON_STRINGA_RANDOM_LUNGA_ALMENO_32_CARATTERI',
+
+    // Opzione A: se esiste gia backend/bootstrap.php con funzione db(), lascia null.
+    // Opzione B: compila questi valori per usare PDO direttamente.
+    'pdo_dsn' => null,
+    'pdo_user' => null,
+    'pdo_password' => null,
+];

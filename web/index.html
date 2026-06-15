@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="A new Flutter project.">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="gussoni_crm">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>Gussoni CRM</title>
+  <link rel="manifest" href="manifest.json">
+  <style>
+    :root {
+      color-scheme: light;
+      --boot-bg-1: #fcfbf9;
+      --boot-bg-2: #faf9f7;
+      --boot-bg-3: #f3f1ec;
+      --boot-primary: #5b1205;
+      --boot-tan: #d2b48c;
+      --boot-text: #1c1d1f;
+      --boot-subtle: #54595f;
+      --boot-border: #e9e5df;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background:
+        radial-gradient(circle at 84% 88%, rgba(210, 180, 140, 0.30), transparent 34%),
+        radial-gradient(circle at 8% 6%, rgba(91, 18, 5, 0.08), transparent 30%),
+        linear-gradient(135deg, var(--boot-bg-1), var(--boot-bg-2) 58%, var(--boot-bg-3) 100%);
+      font-family: "Barlow", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    #boot-preloader {
+      position: fixed;
+      inset: 0;
+      z-index: 999999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(circle at 84% 88%, rgba(210, 180, 140, 0.30), transparent 34%),
+        radial-gradient(circle at 8% 6%, rgba(91, 18, 5, 0.08), transparent 30%),
+        linear-gradient(135deg, var(--boot-bg-1), var(--boot-bg-2) 58%, var(--boot-bg-3) 100%);
+      transition: opacity 420ms ease, visibility 420ms ease;
+    }
+
+    #boot-preloader.is-hidden {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+    }
+
+    .boot-scene {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+    }
+
+    .boot-panel {
+      position: relative;
+      width: min(420px, calc(100vw - 48px));
+      padding: 36px 30px 28px;
+      border-radius: 24px;
+      background: #fcfaf7;
+      border: 1px solid var(--boot-border);
+      box-shadow: 0 30px 80px rgba(91, 18, 5, 0.12);
+      text-align: center;
+    }
+
+    .boot-avatar {
+      width: 96px;
+      height: 96px;
+      margin: 0 auto 20px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      background: var(--boot-primary);
+      border: 2px solid rgba(210, 180, 140, 0.55);
+      box-shadow: 0 18px 36px rgba(91, 18, 5, 0.22);
+    }
+
+    .boot-avatar svg {
+      width: 48px;
+      height: 48px;
+      stroke: #f5f0eb;
+      stroke-width: 1.8;
+      fill: none;
+      opacity: 0.95;
+    }
+
+    .boot-title {
+      margin: 0;
+      color: var(--boot-text);
+      font-family: "EB Garamond", Georgia, serif;
+      font-size: clamp(26px, 4vw, 34px);
+      font-weight: 600;
+      letter-spacing: 0;
+    }
+
+    .boot-subtitle {
+      margin: 10px 0 0;
+      color: var(--boot-subtle);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .boot-loader {
+      width: 64px;
+      height: 64px;
+      margin: 26px auto 16px;
+      position: relative;
+    }
+
+    .boot-loader::before,
+    .boot-loader::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 999px;
+      border: 2px solid transparent;
+      border-top-color: var(--boot-primary);
+      border-right-color: rgba(210, 180, 140, 0.85);
+      animation: boot-spin 1.15s linear infinite;
+    }
+
+    .boot-loader::after {
+      inset: 10px;
+      border-top-color: rgba(91, 18, 5, 0.55);
+      border-right-color: rgba(210, 180, 140, 0.45);
+      animation-direction: reverse;
+      animation-duration: 1.7s;
+    }
+
+    .boot-status {
+      color: var(--boot-subtle);
+      font-size: 13px;
+      letter-spacing: 0.02em;
+    }
+
+    .boot-progress {
+      width: 100%;
+      height: 6px;
+      margin-top: 18px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(91, 18, 5, 0.08);
+      border: 1px solid var(--boot-border);
+    }
+
+    .boot-progress-bar {
+      width: 34%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, rgba(210, 180, 140, 0.4), var(--boot-primary), rgba(139, 26, 26, 0.9));
+      box-shadow: 0 0 20px rgba(91, 18, 5, 0.25);
+      animation: boot-progress 1.8s ease-in-out infinite;
+    }
+
+    .boot-brand {
+      position: absolute;
+      left: 22px;
+      bottom: 16px;
+      color: rgba(84, 89, 95, 0.7);
+      font-size: 12px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    @keyframes boot-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    @keyframes boot-progress {
+      0% {
+        transform: translateX(-110%);
+      }
+      55% {
+        transform: translateX(190%);
+      }
+      100% {
+        transform: translateX(190%);
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="boot-preloader" aria-hidden="true">
+    <div class="boot-scene"></div>
+    <div class="boot-panel">
+      <div class="boot-avatar">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 12c2.761 0 5-2.239 5-5s-2.239-5-5-5-5 2.239-5 5 2.239 5 5 5Z"></path>
+          <path d="M4.5 21a7.5 7.5 0 0 1 15 0"></path>
+        </svg>
+      </div>
+      <h1 class="boot-title">Gussoni Consulenze</h1>
+      <p class="boot-subtitle">Avvio del CRM e caricamento del workspace.</p>
+      <div class="boot-loader"></div>
+      <div class="boot-status">Preparazione workspace</div>
+      <div class="boot-progress">
+        <div class="boot-progress-bar"></div>
+      </div>
+    </div>
+    <div class="boot-brand">Gussoni Consulenze · CRM</div>
+  </div>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (registrations) {
+        for (const registration of registrations) {
+          registration.unregister();
+        }
+      });
+    }
+    if ('caches' in window) {
+      caches.keys().then(function (keys) {
+        for (const key of keys) {
+          caches.delete(key);
+        }
+      });
+    }
+
+    (function () {
+      const preloader = document.getElementById('boot-preloader');
+      let hasHidden = false;
+
+      function hideBootPreloader() {
+        if (!preloader || hasHidden) {
+          return;
+        }
+        hasHidden = true;
+        preloader.classList.add('is-hidden');
+        window.setTimeout(function () {
+          preloader.remove();
+        }, 520);
+      }
+
+      function flutterSurfaceReady() {
+        return Boolean(
+          document.querySelector('flutter-view') ||
+          document.querySelector('flt-glass-pane') ||
+          document.querySelector('canvas')
+        );
+      }
+
+      const observer = new MutationObserver(function () {
+        if (!flutterSurfaceReady()) {
+          return;
+        }
+        window.requestAnimationFrame(function () {
+          window.requestAnimationFrame(hideBootPreloader);
+        });
+        observer.disconnect();
+      });
+
+      observer.observe(document.documentElement, {
+        childList: true,
+        subtree: true,
+      });
+
+      window.addEventListener('load', function () {
+        if (!flutterSurfaceReady()) {
+          return;
+        }
+        window.setTimeout(hideBootPreloader, 120);
+      });
+
+      window.setTimeout(function () {
+        if (!hasHidden) {
+          hideBootPreloader();
+        }
+      }, 12000);
+    })();
+  </script>
+  <script src="flutter_bootstrap.js" async></script>
+</body>
+</html>

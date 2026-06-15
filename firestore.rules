@@ -1,0 +1,104 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─────────────────────────────────────────
+    // Helper functions
+    // ─────────────────────────────────────────
+
+    function isAdmin() {
+      return request.auth != null
+          && request.auth.uid == 'XTsWw4FJeic7AzmCIg1YoNTT9I73'; // sostituire con uid reale
+    }
+
+    function isAuth() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuth() && request.auth.uid == userId;
+    }
+
+    function myTeamId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.get('teamId', null);
+    }
+
+    function isTeamMember(teamId) {
+      return isAuth()
+          && teamId != null
+          && exists(/databases/$(database)/documents/teams/$(teamId)/members/$(request.auth.uid));
+    }
+
+    function isSameTeam(userId) {
+      let tid = myTeamId();
+      return isAuth()
+          && tid != null
+          && exists(/databases/$(database)/documents/teams/$(tid)/members/$(userId));
+    }
+
+    function isTeamOwner(teamId) {
+      return isAuth()
+          && get(/databases/$(database)/documents/teams/$(teamId)).data.ownerId == request.auth.uid;
+    }
+
+    // ─────────────────────────────────────────
+    // Admin – accesso totale
+    // ─────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────
+    // Profili utente  users/{userId}
+    // ─────────────────────────────────────────
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+      allow create: if isAuth();
+      allow update: if isAuth()
+          && request.resource.data.keys().hasOnly(
+              ['teamId', 'displayName', 'role', 'email',
+               'billingProfile', 'emailSignatureHtml']);
+      allow read: if isAuth() && isSameTeam(userId);
+    }
+
+    // ─────────────────────────────────────────
+    // Sotto-collezioni utente  users/{userId}/{sub}/{doc}
+    //
+    // Collezioni standard (da nexora):
+    //   tasks, timeTracks, timelineSlots, companies, companyContacts,
+    //   projects, phases, tickets, invoices, availability, vacations,
+    //   subscriptions, pushTokens, googleCalendarSync
+    //
+    // Collezioni Gussoni-specifiche:
+    //   opportunities, quotations
+    // ─────────────────────────────────────────
+    match /users/{userId}/{sub}/{docId} {
+      allow read, write: if isOwner(userId);
+      allow read: if isAuth() && isSameTeam(userId);
+    }
+
+    // ─────────────────────────────────────────
+    // Teams  teams/{teamId}
+    // ─────────────────────────────────────────
+    match /teams/{teamId} {
+      allow create: if isAuth();
+      allow read: if isTeamMember(teamId);
+      allow update: if isTeamMember(teamId) && (
+        isTeamOwner(teamId)
+        || request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['billingProfile', 'youdoxConfig', 'emailSignatureHtml'])
+      );
+      allow delete: if isAdmin();
+    }
+
+    // ─────────────────────────────────────────
+    // Team members  teams/{teamId}/members/{memberId}
+    // ─────────────────────────────────────────
+    match /teams/{teamId}/members/{memberId} {
+      allow read: if isTeamMember(teamId);
+      allow write: if isAuth() && (isTeamMember(teamId) || isAdmin());
+      allow create: if isAuth();
+    }
+
+  }
+}

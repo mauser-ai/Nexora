@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "flutter-animations": {
+      "source": "madteacher/mad-agents-skills",
+      "sourceType": "github",
+      "skillPath": "flutter-animations/SKILL.md",
+      "computedHash": "a0f81c4bbff81b43be42cd11ebf33b6a4e50e2f94134d3071e441785fc4872e8"
+    }
+  }
+}

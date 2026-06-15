@@ -1,0 +1,17 @@
+<svg viewBox="0 0 200 48" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="100%" stop-color="#0ea5e9"/>
+    </linearGradient>
+  </defs>
+  <!-- Mark -->
+  <rect width="48" height="48" rx="11" fill="url(#g)"/>
+  <path d="M9 39 L9 9 L17.5 9 L31.5 30 L31.5 9 L39 9 L39 39 L30.5 39 L16.5 18 L16.5 39 Z"
+        fill="white"/>
+  <!-- Wordmark -->
+  <text x="58" y="33" font-family="Inter, system-ui, sans-serif"
+        font-size="22" font-weight="800" fill="#111827" letter-spacing="-0.5">
+    NEXORA
+  </text>
+</svg>
