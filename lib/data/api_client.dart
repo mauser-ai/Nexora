@@ -9,11 +9,11 @@ import 'package:http/http.dart' as http;
 // ─────────────────────────────────────────────────────────────────────────────
 // Configurazione — modifica solo BASE_URL
 // ─────────────────────────────────────────────────────────────────────────────
-const String _kBaseUrl = 'https://gussoni.sviluppo.host/api';
+const String _kBaseUrl = 'https://nexora.sviluppo.host/api';
 
-const String _kKeyAccess  = 'gussoni_access_token';
-const String _kKeyRefresh = 'gussoni_refresh_token';
-const String _kKeyUserId  = 'gussoni_api_user_id';
+const String _kKeyAccess = 'nexora_access_token';
+const String _kKeyRefresh = 'nexora_refresh_token';
+const String _kKeyUserId = 'nexora_api_user_id';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ApiException
@@ -38,7 +38,7 @@ class ApiClient {
   // Web: usa aesGcm (richiede HTTPS). Se fallisce usa fallback in-memory.
   static FlutterSecureStorage get _secureStorage => kIsWeb
       ? const FlutterSecureStorage(
-          webOptions: WebOptions(dbName: 'gussoni_crm', publicKey: 'GussoniCRM'),
+          webOptions: WebOptions(dbName: 'nexora_crm', publicKey: 'NexoraCRM'),
         )
       : const FlutterSecureStorage();
 
@@ -50,7 +50,7 @@ class ApiClient {
   String? _accessToken;
   String? _refreshToken;
   String? _tokenUserId;
-  bool    _refreshing = false;
+  bool _refreshing = false;
   Completer<void>? _refreshCompleter;
 
   // ── Storage helpers con fallback in-memory ────────────────────────────────
@@ -96,7 +96,7 @@ class ApiClient {
     );
 
     final body = _parseBody(resp);
-    _accessToken  = body['access_token']  as String;
+    _accessToken = body['access_token'] as String;
     _refreshToken = body['refresh_token'] as String;
     _tokenUserId = user.uid;
 
@@ -107,9 +107,9 @@ class ApiClient {
 
   // ── Carica tokens da storage al lancio ───────────────────────────────────
   Future<bool> loadStoredTokens() async {
-    _accessToken  = await _read(_kKeyAccess);
+    _accessToken = await _read(_kKeyAccess);
     _refreshToken = await _read(_kKeyRefresh);
-    _tokenUserId  = await _read(_kKeyUserId);
+    _tokenUserId = await _read(_kKeyUserId);
     final currentUserId = FirebaseAuth.instance.currentUser?.uid;
     if (currentUserId != null &&
         _tokenUserId != null &&
@@ -133,34 +133,42 @@ class ApiClient {
   // ── GET ──────────────────────────────────────────────────────────────────
   Future<dynamic> get(String path, {Map<String, String>? query}) async {
     final uri = _buildUri(path, query);
-    final resp = await _authedRequest(() async => _http.get(uri, headers: await _headers()));
+    final resp = await _authedRequest(
+      () async => _http.get(uri, headers: await _headers()),
+    );
     return _parseBody(resp);
   }
 
   // ── POST ─────────────────────────────────────────────────────────────────
   Future<dynamic> post(String path, [Map<String, dynamic>? body]) async {
-    final uri   = _buildUri(path);
+    final uri = _buildUri(path);
     final bBody = body != null ? jsonEncode(body) : null;
-    final resp  = await _authedRequest(() async => _http.post(
-      uri, headers: await _headers(), body: bBody,
-    ));
+    final resp = await _authedRequest(
+      () async => _http.post(uri, headers: await _headers(), body: bBody),
+    );
     return _parseBody(resp);
   }
 
   // ── PUT ──────────────────────────────────────────────────────────────────
-  Future<dynamic> put(String path, Map<String, dynamic> body, {Map<String, String>? query}) async {
-    final uri   = _buildUri(path, query);
+  Future<dynamic> put(
+    String path,
+    Map<String, dynamic> body, {
+    Map<String, String>? query,
+  }) async {
+    final uri = _buildUri(path, query);
     final bBody = jsonEncode(body);
-    final resp  = await _authedRequest(() async => _http.put(
-      uri, headers: await _headers(), body: bBody,
-    ));
+    final resp = await _authedRequest(
+      () async => _http.put(uri, headers: await _headers(), body: bBody),
+    );
     return _parseBody(resp);
   }
 
   // ── DELETE ───────────────────────────────────────────────────────────────
   Future<dynamic> delete(String path, {Map<String, String>? query}) async {
-    final uri  = _buildUri(path, query);
-    final resp = await _authedRequest(() async => _http.delete(uri, headers: await _headers()));
+    final uri = _buildUri(path, query);
+    final resp = await _authedRequest(
+      () async => _http.delete(uri, headers: await _headers()),
+    );
     return _parseBody(resp);
   }
 
@@ -222,7 +230,9 @@ class ApiClient {
   }
 
   // Esegue la request; su 401 ri-autentica e riprova una volta
-  Future<http.Response> _authedRequest(Future<Future<http.Response>> Function() fn) async {
+  Future<http.Response> _authedRequest(
+    Future<Future<http.Response>> Function() fn,
+  ) async {
     if (_accessToken == null) await _ensureAuth();
     var resp = await (await fn());
     if (resp.statusCode == 401) {
@@ -255,8 +265,8 @@ class ApiClient {
         await loginWithFirebase();
         return;
       }
-      final body    = jsonDecode(resp.body) as Map<String, dynamic>;
-      _accessToken  = body['access_token']  as String;
+      final body = jsonDecode(resp.body) as Map<String, dynamic>;
+      _accessToken = body['access_token'] as String;
       _refreshToken = body['refresh_token'] as String;
       _tokenUserId = FirebaseAuth.instance.currentUser?.uid;
       await _write(_kKeyAccess, _accessToken);
@@ -279,9 +289,30 @@ class ApiClient {
 
   dynamic _parseBody(http.Response resp) {
     if (resp.statusCode == 204) return null;
-    final body = jsonDecode(resp.body);
+    final rawBody = resp.body.trim();
+    if (rawBody.isEmpty) {
+      throw ApiException(
+        'Risposta vuota dal server (${resp.statusCode})',
+        statusCode: resp.statusCode,
+      );
+    }
+
+    dynamic body;
+    try {
+      body = jsonDecode(rawBody);
+    } on FormatException {
+      final preview = rawBody.length > 240
+          ? '${rawBody.substring(0, 240)}…'
+          : rawBody;
+      throw ApiException(
+        'Risposta non JSON dal server (${resp.statusCode}): $preview',
+        statusCode: resp.statusCode,
+      );
+    }
+
     if (resp.statusCode >= 400) {
-      final msg = (body is Map ? body['error'] : null) ?? 'Errore ${resp.statusCode}';
+      final msg =
+          (body is Map ? body['error'] : null) ?? 'Errore ${resp.statusCode}';
       throw ApiException(msg.toString(), statusCode: resp.statusCode);
     }
     return body;

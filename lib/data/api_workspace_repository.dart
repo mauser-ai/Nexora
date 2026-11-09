@@ -16,8 +16,9 @@ Map<String, dynamic> _jsonSafe(Map<String, dynamic> map) {
 dynamic _toJsonValue(dynamic v) {
   if (v is Timestamp) return v.toDate().toIso8601String();
   if (v is DateTime) return v.toIso8601String();
-  if (v is FieldValue)
+  if (v is FieldValue) {
     return DateTime.now().toIso8601String(); // serverTimestamp → now
+  }
   if (v is Map) return _jsonSafe(Map<String, dynamic>.from(v));
   if (v is List) return v.map(_toJsonValue).toList();
   return v;
@@ -303,6 +304,7 @@ class ApiWorkspaceRepository {
     ProjectType type = ProjectType.profit,
     String? opportunityId,
     String? quotationId,
+    Map<String, dynamic> customFields = const {},
   }) async {
     final resp = await _api.post(
       '/projects/index.php?action=create_with_config',
@@ -313,6 +315,7 @@ class ApiWorkspaceRepository {
         'type': type.name,
         'opportunityId': opportunityId,
         'quotationId': quotationId,
+        'customFields': customFields,
         'phaseConfigs': phaseConfigs
             .map(
               (c) => {
@@ -588,6 +591,11 @@ class ApiWorkspaceRepository {
     'isSuccessFee': i.isSuccessFee,
     'grantAmount': i.grantAmount,
     'notes': i.notes,
+    'paymentStatus': i.paymentStatus,
+    'paidAmount': i.paidAmount,
+    'balanceDue': i.balanceDue,
+    'paidAt': i.paidAt?.toIso8601String(),
+    'posOriginPaymentId': i.posOriginPaymentId,
     'sentAt': i.sentAt?.toIso8601String(),
     'createdAt': i.createdAt?.toIso8601String(),
   };

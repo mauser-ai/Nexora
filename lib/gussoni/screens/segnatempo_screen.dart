@@ -181,26 +181,35 @@ class _SegantempoGussoniScreenState extends State<SegantempoGussoniScreen> {
       builder: (context, constraints) {
         final isMobile = constraints.maxWidth < 560;
         if (isMobile) return _buildMobileLayout();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _buildHeader(),
-            const Divider(height: 1),
-            _DesktopTimersPanel(
-              timers: widget.desktopTimers,
-              companyName: _companyName,
-              projectName: _projectName,
-              taskName: _taskName,
-              onStartTimer: widget.onStartTimer,
-              onStopTimer: widget.onStopTimer,
-              onOpenPendingTimer: widget.onOpenPendingTimer,
-              onDiscardPendingTimer: widget.onDiscardPendingTimer,
-            ),
-            const Divider(height: 1),
-            _buildStatsBar(),
-            const Divider(height: 1),
-            Expanded(child: _buildDayList()),
-          ],
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildHeader(),
+              const SizedBox(height: 14),
+              _DesktopTimersPanel(
+                timers: widget.desktopTimers,
+                companyName: _companyName,
+                projectName: _projectName,
+                taskName: _taskName,
+                onStartTimer: widget.onStartTimer,
+                onStopTimer: widget.onStopTimer,
+                onOpenPendingTimer: widget.onOpenPendingTimer,
+                onDiscardPendingTimer: widget.onDiscardPendingTimer,
+              ),
+              const SizedBox(height: 14),
+              _buildStatsBar(),
+              const SizedBox(height: 14),
+              Expanded(
+                child: Container(
+                  decoration: GussoniBrand.glassPanel(radius: 26, opacity: .9),
+                  clipBehavior: Clip.antiAlias,
+                  child: _buildDayList(),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -515,64 +524,104 @@ class _SegantempoGussoniScreenState extends State<SegantempoGussoniScreen> {
 
   Widget _buildStatsBar() {
     return Container(
-      color: GussoniBrand.surface,
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-      child: Row(
-        children: [
-          // Donut
-          SizedBox(
-            width: 56,
-            height: 56,
-            child: CustomPaint(painter: _DonutPainter(ratio: _billableRatio)),
-          ),
-          const SizedBox(width: 12),
-          Text(
-            '${(_billableRatio * 100).toStringAsFixed(0)}%',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: GussoniBrand.textSecondary,
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
+      decoration: GussoniBrand.glassPanel(radius: 24, opacity: .92),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final cards = <Widget>[
+            _StatCard(
+              minWidth: 260,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: CustomPaint(
+                      painter: _DonutPainter(ratio: _billableRatio),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Incidenza fatturabile',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: GussoniBrand.textMuted,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '${(_billableRatio * 100).toStringAsFixed(0)}%',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                          color: GussoniBrand.textPrimary,
+                          height: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(width: 24),
-          _StatItem(
-            dot: GussoniBrand.textMuted,
-            label: 'Non fatturabile',
-            value: _formatHm(_nonBillableHours),
-          ),
-          const SizedBox(width: 24),
-          _StatItem(
-            dot: GussoniBrand.info,
-            label: 'Fatturabile',
-            value: _formatHm(_billableHours),
-          ),
-          if (_billableAmount > 0) ...[
-            const SizedBox(width: 24),
             _StatItem(
-              label: 'Importo fatturabile',
-              value: _eur.format(_billableAmount),
-              valueColor: GussoniBrand.success,
+              dot: GussoniBrand.textMuted,
+              label: 'Non fatturabile',
+              value: _formatHm(_nonBillableHours),
             ),
-          ],
-          const Spacer(),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              const Text(
-                'Tempo segnato',
-                style: TextStyle(fontSize: 12, color: GussoniBrand.textMuted),
+            _StatItem(
+              dot: GussoniBrand.info,
+              label: 'Fatturabile',
+              value: _formatHm(_billableHours),
+            ),
+            if (_billableAmount > 0)
+              _StatItem(
+                label: 'Importo fatturabile',
+                value: _eur.format(_billableAmount),
+                valueColor: GussoniBrand.success,
               ),
-              Text(
-                _formatHm(_totalHours),
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: GussoniBrand.textPrimary,
-                ),
+            _StatCard(
+              minWidth: 180,
+              alignment: Alignment.centerLeft,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Tempo segnato',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: GussoniBrand.textMuted,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    _formatHm(_totalHours),
+                    style: const TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.w900,
+                      color: GussoniBrand.textPrimary,
+                      height: 1,
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-        ],
+            ),
+          ];
+
+          return Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            alignment: WrapAlignment.spaceBetween,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: cards,
+          );
+        },
       ),
     );
   }
@@ -629,34 +678,53 @@ class _DesktopTimersPanel extends StatelessWidget {
       ..sort((a, b) => b.stoppedAt!.compareTo(a.stoppedAt!));
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 14, 20, 16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            const Color(0xFFF7FCFF).withValues(alpha: .92),
-            const Color(0xFFF6E9E3).withValues(alpha: .84),
-          ],
-        ),
-      ),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: GussoniBrand.glassPanel(radius: 24, opacity: .92),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text(
-                'Timer',
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  color: GussoniBrand.textPrimary,
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                decoration: BoxDecoration(
+                  color: GussoniBrand.surface.withValues(alpha: .9),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: GussoniBrand.border.withValues(alpha: .9),
+                  ),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.play_circle_outline_rounded,
+                      size: 16,
+                      color: GussoniBrand.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    const Text(
+                      'Timer',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: GussoniBrand.textPrimary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 12),
               Text(
                 '${running.length} attivi • ${pending.length} da associare',
                 style: const TextStyle(
                   fontSize: 12,
-                  color: GussoniBrand.textMuted,
+                  color: GussoniBrand.textSecondary,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
               const Spacer(),
@@ -667,7 +735,7 @@ class _DesktopTimersPanel extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           if (running.isNotEmpty)
             Wrap(
               spacing: 10,
@@ -686,9 +754,24 @@ class _DesktopTimersPanel extends StatelessWidget {
                   .toList(),
             ),
           if (running.isEmpty)
-            const Text(
-              'Nessun timer attivo. Avviane uno e lascia che il desktop raccolga il tempo per te.',
-              style: TextStyle(fontSize: 12, color: GussoniBrand.textMuted),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+              decoration: BoxDecoration(
+                color: GussoniBrand.surface.withValues(alpha: .9),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: GussoniBrand.border.withValues(alpha: .88),
+                ),
+              ),
+              child: const Text(
+                'Nessun timer attivo. Avviane uno e lascia che il desktop raccolga il tempo per te.',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: GussoniBrand.textMuted,
+                  height: 1.4,
+                ),
+              ),
             ),
           if (pending.isNotEmpty) ...[
             const SizedBox(height: 14),
@@ -828,12 +911,12 @@ class _TimerChipCardState extends State<_TimerChipCard> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.white.withValues(alpha: .88),
-            const Color(0xFFEAF8FF).withValues(alpha: .78),
+            GussoniBrand.glassSurfaceStrong.withValues(alpha: .92),
+            GussoniBrand.surfaceSubtle.withValues(alpha: .82),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: .74)),
+        border: Border.all(color: GussoniBrand.border.withValues(alpha: .92)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1348,36 +1431,71 @@ class _StatItem extends StatelessWidget {
   final Color? valueColor;
 
   @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    mainAxisSize: MainAxisSize.min,
-    children: [
-      Row(
-        children: [
-          if (dot != null) ...[
-            Container(
-              width: 8,
-              height: 8,
-              decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+  Widget build(BuildContext context) => _StatCard(
+    minWidth: 170,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Row(
+          children: [
+            if (dot != null) ...[
+              Container(
+                width: 8,
+                height: 8,
+                decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+            ],
+            Flexible(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: GussoniBrand.textMuted,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
             ),
-            const SizedBox(width: 6),
           ],
-          Text(
-            label,
-            style: const TextStyle(fontSize: 11, color: GussoniBrand.textMuted),
-          ),
-        ],
-      ),
-      const SizedBox(height: 2),
-      Text(
-        value,
-        style: TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w800,
-          color: valueColor ?? GussoniBrand.textPrimary,
         ),
-      ),
-    ],
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w800,
+            color: valueColor ?? GussoniBrand.textPrimary,
+            height: 1,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _StatCard extends StatelessWidget {
+  const _StatCard({
+    required this.child,
+    this.minWidth = 0,
+    this.alignment = Alignment.centerLeft,
+  });
+
+  final Widget child;
+  final double minWidth;
+  final Alignment alignment;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    constraints: BoxConstraints(minWidth: minWidth),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    decoration: BoxDecoration(
+      color: GussoniBrand.surface.withValues(alpha: .96),
+      borderRadius: BorderRadius.circular(18),
+      border: Border.all(color: GussoniBrand.border.withValues(alpha: .9)),
+    ),
+    alignment: alignment,
+    child: child,
   );
 }
 
@@ -1406,13 +1524,13 @@ class _MobileStatsStrip extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
       decoration: BoxDecoration(
         // Nexora glass — identico ai DesktopWindow
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFCFAF7), Color(0xFFEDF5FC)],
+          colors: [GussoniBrand.glassSurfaceStrong, GussoniBrand.surfaceSubtle],
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: .80)),
+        border: Border.all(color: GussoniBrand.border.withValues(alpha: .92)),
         boxShadow: [
           BoxShadow(
             color: GussoniBrand.primary.withValues(alpha: .08),
@@ -1945,13 +2063,13 @@ class _MobileStatsCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(20, 22, 20, 20),
       decoration: BoxDecoration(
         // Nexora glass — stesso stile dei pannelli desktop
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFFFCFAF7), Color(0xFFEDF5FC)],
+          colors: [GussoniBrand.glassSurfaceStrong, GussoniBrand.surfaceSubtle],
         ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: .80)),
+        border: Border.all(color: GussoniBrand.border.withValues(alpha: .92)),
         boxShadow: [
           BoxShadow(
             color: GussoniBrand.primary.withValues(alpha: .10),
@@ -2389,8 +2507,8 @@ class _MobileTimerCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: isRunning
-              ? [const Color(0xFFFCFAF7), GussoniBrand.primaryBg]
-              : [const Color(0xFFFCFAF7), const Color(0xFFEDF5FC)],
+              ? [GussoniBrand.glassSurfaceStrong, GussoniBrand.primaryBg]
+              : [GussoniBrand.glassSurfaceStrong, GussoniBrand.surfaceSubtle],
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(

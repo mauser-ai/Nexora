@@ -276,25 +276,10 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
         Container(
           margin: const EdgeInsets.fromLTRB(18, 14, 18, 0),
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                GussoniBrand.glassSurfaceStrong.withValues(alpha: .92),
-                GussoniBrand.glassSurfaceMuted.withValues(alpha: .74),
-                _statusColor.withValues(alpha: .10),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(26),
-            border: Border.all(color: Colors.white.withValues(alpha: .74)),
-            boxShadow: [
-              BoxShadow(
-                color: _statusColor.withValues(alpha: .13),
-                blurRadius: 34,
-                offset: const Offset(0, 18),
-              ),
-            ],
+          decoration: GussoniBrand.glassPanel(
+            radius: 26,
+            accent: GussoniBrand.surface,
+            opacity: .96,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -307,13 +292,7 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
                   if (_tabs.index == 0 &&
                       _phases.any((p) => p.deadline != null))
                     Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: .48),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: .68),
-                        ),
-                      ),
+                      decoration: GussoniBrand.glassField(radius: 16),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
@@ -415,19 +394,22 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
               ClipRRect(
                 borderRadius: BorderRadius.circular(18),
                 child: Container(
-                  color: Colors.white.withValues(alpha: .18),
+                  color: GussoniBrand.surfaceSubtle,
                   child: TabBar(
                     controller: _tabs,
-                    labelColor: Colors.white,
-                    unselectedLabelColor: GussoniBrand.textSecondary,
+                    labelColor: GussoniBrand.textPrimary,
+                    unselectedLabelColor: GussoniBrand.textMuted,
                     indicator: BoxDecoration(
                       borderRadius: BorderRadius.circular(16),
-                      gradient: LinearGradient(
-                        colors: [
-                          GussoniBrand.primary.withValues(alpha: .94),
-                          GussoniBrand.info.withValues(alpha: .82),
-                        ],
-                      ),
+                      color: GussoniBrand.surface,
+                      border: Border.all(color: GussoniBrand.border),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x1202332A),
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
                     ),
                     indicatorPadding: const EdgeInsets.symmetric(
                       horizontal: 2,
@@ -435,8 +417,13 @@ class _ProjectDetailPageState extends State<ProjectDetailPage>
                     ),
                     dividerColor: Colors.transparent,
                     labelStyle: const TextStyle(
-                      fontSize: 12,
+                      fontSize: 12.5,
                       fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
                       letterSpacing: 0,
                     ),
                     tabs: const [
@@ -2246,11 +2233,7 @@ class _ProjectHeroMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .46),
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: Colors.white.withValues(alpha: .68)),
-    ),
+    decoration: GussoniBrand.glassField(radius: 18),
     child: Row(
       children: [
         Icon(icon, size: 18, color: color),
@@ -3339,50 +3322,88 @@ class _OpportunityDetailPageState extends State<OpportunityDetailPage>
       children: [
         // ── Top bar ──────────────────────────────────────────────────────
         Container(
-          color: GussoniBrand.surface,
-          padding: const EdgeInsets.fromLTRB(24, 14, 24, 0),
+          margin: const EdgeInsets.fromLTRB(18, 14, 18, 0),
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 0),
+          decoration: GussoniBrand.glassPanel(
+            radius: 26,
+            accent: GussoniBrand.surface,
+            opacity: .96,
+          ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              InkWell(
-                onTap: widget.onBack,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.arrow_back,
-                      size: 14,
-                      color: GussoniBrand.textMuted,
-                    ),
-                    const SizedBox(width: 6),
-                    const Text(
-                      'Panoramica opportunità',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: GussoniBrand.textMuted,
-                        fontWeight: FontWeight.w600,
+              DetailBackBar(
+                label: 'Panoramica opportunità',
+                onBack: widget.onBack,
+                actions: [
+                  _ProjectGlassAction(
+                    icon: Icons.edit_outlined,
+                    tooltip: 'Modifica opportunità',
+                    onTap: () => widget.onEdit(_opp),
+                  ),
+                  if (_opp.status == OpportunityStatus.preventivazione &&
+                      widget.onCreatePreventivo != null) ...[
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: widget.onCreatePreventivo,
+                      icon: const Icon(Icons.request_quote_outlined, size: 14),
+                      label: const Text('Crea preventivo'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: GussoniBrand.primary,
                       ),
                     ),
                   ],
-                ),
+                  if ((_opp.status == OpportunityStatus.accettata ||
+                          _opp.status ==
+                              OpportunityStatus.accettataSenzaFirma) &&
+                      _linkedProject == null &&
+                      widget.onCreateProject != null) ...[
+                    const SizedBox(width: 8),
+                    FilledButton.icon(
+                      onPressed: widget.onCreateProject,
+                      icon: const Icon(Icons.folder_open_outlined, size: 14),
+                      label: const Text('Crea progetto'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: GussoniBrand.success,
+                      ),
+                    ),
+                  ],
+                ],
               ),
               const SizedBox(height: 10),
               Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    child: Text(
-                      _opp.title,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w900,
-                        color: GussoniBrand.textPrimary,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _opp.title,
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: GussoniBrand.textPrimary,
+                            height: 1.2,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _companyName,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: GussoniBrand.textSecondary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: 16),
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 12,
-                      vertical: 4,
+                      vertical: 5,
                     ),
                     decoration: BoxDecoration(
                       color: _statusColor.withValues(alpha: 0.1),
@@ -3400,76 +3421,56 @@ class _OpportunityDetailPageState extends State<OpportunityDetailPage>
                       ),
                     ),
                   ),
-                  // Bottone modifica
-                  const SizedBox(width: 8),
-                  IconButton(
-                    onPressed: () => widget.onEdit(_opp),
-                    icon: const Icon(
-                      Icons.edit_outlined,
-                      size: 16,
-                      color: GussoniBrand.textMuted,
-                    ),
-                    tooltip: 'Modifica opportunità',
-                  ),
-                  // Crea preventivo (in fase preventivazione)
-                  if (_opp.status == OpportunityStatus.preventivazione &&
-                      widget.onCreatePreventivo != null) ...[
-                    const SizedBox(width: 4),
-                    FilledButton.icon(
-                      onPressed: widget.onCreatePreventivo,
-                      icon: const Icon(Icons.request_quote_outlined, size: 14),
-                      label: const Text('Crea preventivo'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: GussoniBrand.primary,
-                      ),
-                    ),
-                  ],
-                  // Crea progetto (opportunità accettata senza progetto esistente)
-                  if ((_opp.status == OpportunityStatus.accettata ||
-                          _opp.status ==
-                              OpportunityStatus.accettataSenzaFirma) &&
-                      _linkedProject == null &&
-                      widget.onCreateProject != null) ...[
-                    const SizedBox(width: 4),
-                    FilledButton.icon(
-                      onPressed: widget.onCreateProject,
-                      icon: const Icon(Icons.folder_open_outlined, size: 14),
-                      label: const Text('Crea progetto'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: GussoniBrand.success,
-                      ),
-                    ),
-                  ],
                 ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                _companyName,
-                style: const TextStyle(
-                  fontSize: 13,
-                  color: GussoniBrand.textSecondary,
-                ),
               ),
               const SizedBox(height: 14),
-              TabBar(
-                controller: _tabs,
-                labelColor: GussoniBrand.primary,
-                unselectedLabelColor: GussoniBrand.textSecondary,
-                indicatorColor: GussoniBrand.primary,
-                labelStyle: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+              ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  color: GussoniBrand.surfaceSubtle,
+                  child: TabBar(
+                    controller: _tabs,
+                    labelColor: GussoniBrand.textPrimary,
+                    unselectedLabelColor: GussoniBrand.textMuted,
+                    indicator: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      color: GussoniBrand.surface,
+                      border: Border.all(color: GussoniBrand.border),
+                      boxShadow: const [
+                        BoxShadow(
+                          color: Color(0x1202332A),
+                          blurRadius: 10,
+                          offset: Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    indicatorPadding: const EdgeInsets.symmetric(
+                      horizontal: 2,
+                      vertical: 4,
+                    ),
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    dividerColor: Colors.transparent,
+                    labelStyle: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0,
+                    ),
+                    unselectedLabelStyle: const TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      letterSpacing: 0,
+                    ),
+                    tabs: const [
+                      Tab(text: 'Info bando'),
+                      Tab(text: 'Pratica'),
+                    ],
+                  ),
                 ),
-                tabs: const [
-                  Tab(text: 'INFO BANDO'),
-                  Tab(text: 'PRATICA'),
-                ],
               ),
             ],
           ),
         ),
-        const Divider(height: 1),
+        const SizedBox(height: 8),
 
         Expanded(
           child: TabBarView(

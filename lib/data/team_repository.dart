@@ -4,11 +4,30 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'api_client.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
 
+import '../models/custom_field_models.dart';
+import '../models/roles.dart';
 import '../models/subscription_models.dart';
+
+abstract final class TeamExtraModule {
+  static const nexoraAi = 'nexora_ai';
+  static const teamChat = 'team_chat';
+  static const integrations = 'integrations';
+  static const bandi = 'bandi';
+  static const customBranding = 'custom_branding';
+  static const nexoraPos = 'nexora_pos';
+
+  static const all = <String>[
+    nexoraAi,
+    teamChat,
+    integrations,
+    bandi,
+    customBranding,
+    nexoraPos,
+  ];
+}
 
 // ────────────────────────────────────────────────
 // Teamleader-inspired team structure:
@@ -67,6 +86,14 @@ class TeamMember {
         ? Timestamp.fromDate(joinedAt!)
         : FieldValue.serverTimestamp(),
   };
+
+  Map<String, dynamic> toApiMap() => {
+    'userId': userId,
+    'email': email,
+    'displayName': displayName,
+    'role': role,
+    'status': status,
+  };
 }
 
 class TeamInfo {
@@ -79,6 +106,10 @@ class TeamInfo {
     this.subscription,
     this.brandLogoUrl,
     this.brandColor,
+    this.enabledModules = const [],
+    this.customFieldDefinitions = const [],
+    this.teamRoles = const [],
+    this.appliedPackageIds = const [],
   });
 
   final String id;
@@ -88,7 +119,11 @@ class TeamInfo {
   final DateTime? createdAt;
   final TeamSubscription? subscription;
   final String? brandLogoUrl; // URL logo team (Firebase Storage)
-  final String? brandColor;   // Hex colore brand, es. '#10B981'
+  final String? brandColor; // Hex colore brand, es. '#10B981'
+  final List<String> enabledModules;
+  final List<TeamCustomFieldDefinition> customFieldDefinitions;
+  final List<String> teamRoles;
+  final List<String> appliedPackageIds;
 
   List<TeamMember> get activeMembers =>
       members.where((m) => m.status == 'active').toList();
@@ -100,6 +135,56 @@ class TeamInfo {
 
   bool get hasActiveSubscription =>
       subscription != null && subscription!.isActive;
+
+  bool hasModule(String moduleId) => enabledModules.contains(moduleId);
+
+  List<String> get availableRoles {
+    final configured = GussoniRoles.normalize(teamRoles);
+    if (configured.isNotEmpty) return configured;
+    return GussoniRoles.all;
+  }
+
+  List<TeamCustomFieldDefinition> fieldsForModule(CustomFieldModule module) {
+    return customFieldDefinitions
+        .where((field) => field.module == module)
+        .toList()
+      ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
+  }
+
+  TeamInfo copyWith({
+    String? id,
+    String? name,
+    String? ownerId,
+    List<TeamMember>? members,
+    DateTime? createdAt,
+    TeamSubscription? subscription,
+    String? brandLogoUrl,
+    bool clearBrandLogoUrl = false,
+    String? brandColor,
+    bool clearBrandColor = false,
+    List<String>? enabledModules,
+    List<TeamCustomFieldDefinition>? customFieldDefinitions,
+    List<String>? teamRoles,
+    List<String>? appliedPackageIds,
+  }) {
+    return TeamInfo(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      ownerId: ownerId ?? this.ownerId,
+      members: members ?? this.members,
+      createdAt: createdAt ?? this.createdAt,
+      subscription: subscription ?? this.subscription,
+      brandLogoUrl: clearBrandLogoUrl
+          ? null
+          : (brandLogoUrl ?? this.brandLogoUrl),
+      brandColor: clearBrandColor ? null : (brandColor ?? this.brandColor),
+      enabledModules: enabledModules ?? this.enabledModules,
+      customFieldDefinitions:
+          customFieldDefinitions ?? this.customFieldDefinitions,
+      teamRoles: teamRoles ?? this.teamRoles,
+      appliedPackageIds: appliedPackageIds ?? this.appliedPackageIds,
+    );
+  }
 }
 
 // ────────────────────────────────────────────────
@@ -125,7 +210,12 @@ class TeamRepository {
       final raw = await _api.get('/app/team.php');
       _apiMode = raw is Map && raw.containsKey('team');
     } catch (_) {
-      _apiMode = false;
+      throw ApiException(
+        'API team MySQL non disponibile. Installa/carica /api/app/install.php e /api/app/team.php.',
+      );
+    }
+    if (_apiMode != true) {
+      throw ApiException('Risposta API team MySQL non valida.');
     }
     return _apiMode!;
   }
@@ -158,26 +248,40 @@ class TeamRepository {
       brandColor: ((data['brandColor'] ?? '') as String).isEmpty
           ? null
           : (data['brandColor'] as String),
+      enabledModules: ((data['enabledModules'] as List?) ?? const [])
+          .map((module) => module.toString())
+          .where(TeamExtraModule.all.contains)
+          .toList(),
+      customFieldDefinitions:
+          ((data['customFieldDefinitions'] as List?) ?? const [])
+              .whereType<Map>()
+              .map(
+                (field) => TeamCustomFieldDefinition.fromMap(
+                  Map<String, dynamic>.from(field),
+                ),
+              )
+              .where((field) => field.id.isNotEmpty && field.label.isNotEmpty)
+              .toList(),
+      teamRoles: GussoniRoles.normalize(
+        ((data['teamRoles'] as List?) ?? const []).map(
+          (role) => role.toString(),
+        ),
+      ),
+      appliedPackageIds: ((data['appliedPackageIds'] as List?) ?? const [])
+          .map((value) => value.toString().trim())
+          .where((value) => value.isNotEmpty)
+          .toList(),
     );
   }
 
   /// Branding (logo) di un team specifico — usato per i PDF.
   Future<String?> fetchTeamBrandLogo(String teamId) async {
     if (await _useApi()) {
-      try {
-        final raw = await _api.get('/app/team.php', query: {'id': teamId});
-        final team = _teamFromApi(raw);
-        return team?.brandLogoUrl;
-      } catch (_) {
-        return null;
-      }
+      final raw = await _api.get('/app/team.php', query: {'id': teamId});
+      final team = _teamFromApi(raw);
+      return team?.brandLogoUrl;
     }
-    try {
-      final doc = await _db.collection('teams').doc(teamId).get();
-      return (doc.data()?['brandLogoUrl'] as String?)?.trim();
-    } catch (_) {
-      return null;
-    }
+    return null;
   }
 
   /// Aggiorna il branding del proprio team (nome, logo, colore).
@@ -197,19 +301,25 @@ class TeamRepository {
       });
       return;
     }
-    final data = <String, dynamic>{};
-    if (name != null) data['name'] = name;
-    if (removeLogo) {
-      data['brandLogoUrl'] = FieldValue.delete();
-    } else if (brandLogoUrl != null) {
-      data['brandLogoUrl'] = brandLogoUrl;
-    }
-    if (brandColor != null) data['brandColor'] = brandColor;
-    if (data.isEmpty) return;
-    await _db
-        .collection('teams')
-        .doc(teamId)
-        .set(data, SetOptions(merge: true));
+    throw ApiException('API team MySQL non disponibile.');
+  }
+
+  Future<void> updateTeamCustomFields(
+    List<TeamCustomFieldDefinition> definitions,
+  ) async {
+    await _useApi();
+    await _api.put('/app/team.php', {
+      'customFieldDefinitions': definitions
+          .map((field) => field.toMap())
+          .toList(),
+    });
+  }
+
+  Future<void> updateTeamRoles(List<String> roles) async {
+    await _useApi();
+    await _api.put('/app/team.php', {
+      'teamRoles': GussoniRoles.normalize(roles),
+    });
   }
 
   // ── Watch team for current user ──
@@ -229,87 +339,25 @@ class TeamRepository {
       }
     }());
 
-    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? teamSub;
-    StreamSubscription<QuerySnapshot<Map<String, dynamic>>>? membersSub;
-    String? currentTeamId;
-    Map<String, dynamic>? currentTeamData;
-    List<TeamMember> currentMembers = const [];
-
-    void emitTeamIfReady() {
-      if (ctrl.isClosed) return;
-      if (currentTeamId == null || currentTeamData == null) return;
-      final subData = currentTeamData!['subscription'] as Map<String, dynamic>?;
-      ctrl.add(
-        TeamInfo(
-          id: currentTeamId!,
-          name: currentTeamData!['name'] as String? ?? '',
-          ownerId: currentTeamData!['ownerId'] as String? ?? '',
-          members: currentMembers,
-          createdAt: currentTeamData!['createdAt'] is Timestamp
-              ? (currentTeamData!['createdAt'] as Timestamp).toDate()
-              : null,
-          subscription: TeamSubscription.fromMap(subData),
-          brandLogoUrl: currentTeamData!['brandLogoUrl'] as String?,
-          brandColor:   currentTeamData!['brandColor']   as String?,
-        ),
-      );
+    Timer? pollTimer;
+    Future<void> refresh() async {
+      try {
+        final raw = await _api.get('/app/team.php');
+        if (!ctrl.isClosed) ctrl.add(_teamFromApi(raw));
+      } catch (e) {
+        if (!ctrl.isClosed) ctrl.addError(e);
+      }
     }
 
-    StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>? userSub;
     unawaited(() async {
-      if (await _useApi()) return; // gestito sopra via API
-      userSub = _db.collection('users').doc(userId).snapshots().listen((
-      userDoc,
-    ) async {
-      final teamId = userDoc.data()?['teamId'] as String?;
-      if (teamId == null) {
-        currentTeamId = null;
-        currentTeamData = null;
-        currentMembers = const [];
-        ctrl.add(null);
-        return;
-      }
-
-      // Cancel previous team sub
-      await teamSub?.cancel();
-      await membersSub?.cancel();
-      currentTeamId = teamId;
-      currentTeamData = null;
-      currentMembers = const [];
-
-      // Watch team metadata
-      teamSub = _db.collection('teams').doc(teamId).snapshots().listen((
-        teamDoc,
-      ) {
-        final data = teamDoc.data();
-        if (data == null) {
-          ctrl.add(null);
-          return;
-        }
-        currentTeamData = data;
-        emitTeamIfReady();
+      await _useApi();
+      await refresh();
+      pollTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+        if (ctrl.hasListener) unawaited(refresh());
       });
-
-      // Also watch members collection for real-time changes
-      membersSub = _db
-          .collection('teams')
-          .doc(teamId)
-          .collection('members')
-          .snapshots()
-          .listen((membersSnapshot) {
-            currentMembers = membersSnapshot.docs
-                .map((d) => TeamMember.fromMap(d.id, d.data()))
-                .toList();
-            emitTeamIfReady();
-          });
-    });
     }());
 
-    ctrl.onCancel = () async {
-      await userSub?.cancel();
-      await teamSub?.cancel();
-      await membersSub?.cancel();
-    };
+    ctrl.onCancel = () async => pollTimer?.cancel();
 
     return ctrl.stream;
   }
@@ -323,36 +371,9 @@ class TeamRepository {
     required String ownerDisplayName,
     required String ownerRole,
   }) async {
-    final teamId = 'team-${ownerId.substring(0, 8)}';
-    final now = DateTime.now();
-    final batch = _db.batch();
-
-    batch.set(_db.collection('teams').doc(teamId), {
-      'name': name,
-      'ownerId': ownerId,
-      'createdAt': Timestamp.fromDate(now),
-    });
-
-    batch.set(
-      _db.collection('teams').doc(teamId).collection('members').doc(ownerId),
-      {
-        'userId': ownerId,
-        'email': ownerEmail,
-        'displayName': ownerDisplayName,
-        'role': ownerRole,
-        'status': 'active',
-        'joinedAt': Timestamp.fromDate(now),
-      },
+    throw ApiException(
+      'Creazione team arbitraria non disponibile da client. Usa l’endpoint admin MySQL.',
     );
-
-    batch.set(_db.collection('users').doc(ownerId), {
-      'teamId': teamId,
-      'displayName': ownerDisplayName,
-      'role': ownerRole,
-    }, SetOptions(merge: true));
-
-    await batch.commit();
-    return teamId;
   }
 
   // ── Add member to team ──
@@ -361,21 +382,8 @@ class TeamRepository {
     required String teamId,
     required TeamMember member,
   }) async {
-    final batch = _db.batch();
-    batch.set(
-      _db
-          .collection('teams')
-          .doc(teamId)
-          .collection('members')
-          .doc(member.userId),
-      member.toMap(),
-    );
-    batch.set(_db.collection('users').doc(member.userId), {
-      'teamId': teamId,
-      'displayName': member.displayName,
-      'role': member.role,
-    }, SetOptions(merge: true));
-    await batch.commit();
+    await _useApi();
+    await _api.post('/app/team.php', {'member': member.toApiMap()});
   }
 
   // ── Seed Gweb SRL team on first login ──
@@ -386,13 +394,7 @@ class TeamRepository {
     required String currentUserId,
     required String currentUserEmail,
   }) async {
-    // In modalità MySQL il team personale viene creato dal server alla
-    // prima GET di /app/team.php: il seed Firestore non serve.
-    if (await _useApi()) return;
-    return seedGwebTeam_impl(
-      currentUserId: currentUserId,
-      currentUserEmail: currentUserEmail,
-    );
+    await _useApi();
   }
 
   Future<void> seedGwebTeam_impl({

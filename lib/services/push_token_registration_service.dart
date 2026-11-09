@@ -72,7 +72,7 @@ class PushTokenRegistrationService {
         await _browserPushHelper.showNotification(
           title: notification.title?.trim().isNotEmpty == true
               ? notification.title!.trim()
-              : 'Gussoni CRM',
+              : 'Nexora',
           body: notification.body?.trim().isNotEmpty == true
               ? notification.body!.trim()
               : 'Hai una nuova notifica.',

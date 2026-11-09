@@ -41,10 +41,11 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'AIzaSyCyYzngYhHCPBpbQDInuEwhaRUxrgyXO2s',
-    appId: '1:362917162978:web:20ea08e0ff8f55702793bb',
+    apiKey: 'AIzaSyAfVVEKX_ZQ3ItzEcHDvZuX43stykDqf8U',
+    appId: '1:362917162978:ios:e7ead42cd3c2a5e32793bb',
     messagingSenderId: '362917162978',
     projectId: 'gussoni-d3153',
     storageBucket: 'gussoni-d3153.firebasestorage.app',
+    iosBundleId: 'app.nexora',
   );
 }

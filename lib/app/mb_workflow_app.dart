@@ -22,13 +22,14 @@ import 'mobile_workspace_scaffold.dart';
 import 'nexora_dialog.dart';
 import 'nexora_landing_page.dart';
 import 'threads_app.dart';
-import '../admin/admin_repository.dart' show kAdminUid, AdminRepository;
+import '../admin/admin_repository.dart' show AdminRepository;
 import '../admin/admin_screen.dart';
 import '../crm/data/crm_store.dart';
 import '../crm/data/firestore_crm_repository.dart';
 import '../crm/models/crm_extra_models.dart';
 import '../crm/screens/contatti_firestore_card.dart';
 import '../gussoni/screens/bandi_screen.dart';
+import '../gussoni/screens/nexora_pos_screen.dart';
 import '../gussoni/screens/panoramica_screen.dart';
 import '../gussoni/screens/memo_screen.dart';
 import '../gussoni/screens/societa_screen.dart';
@@ -74,6 +75,7 @@ import '../data/sample_data.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../data/team_repository.dart';
+import '../models/custom_field_models.dart';
 // subscription_models.dart rimosso — subscription non usata su Gussoni
 import '../models/domain_models.dart';
 import '../models/desktop_timer_entry.dart';
@@ -92,6 +94,7 @@ import '../data/template_repository.dart';
 import '../models/template_models.dart' show kFattura;
 import '../settings/template_picker_field.dart';
 import '../settings/settings_page.dart';
+import '../widgets/custom_fields_section.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
 import '../brand_config.dart';
@@ -137,7 +140,7 @@ class MbWorkflowApp extends StatelessWidget {
     final textTheme = GoogleFonts.spaceGroteskTextTheme();
     final brandColor = GussoniBrand.primary;
     return MaterialApp(
-      title: 'Gussoni CRM',
+      title: 'Nexora',
       debugShowCheckedModeBanner: false,
       navigatorObservers: [AnalyticsService.instance.observer],
       theme: ThemeData(
@@ -307,14 +310,10 @@ class AuthGate extends StatelessWidget {
           );
         } else if (snapshot.hasData) {
           final user = snapshot.data!;
-          if (user.uid == kAdminUid) {
-            child = AdminPanel(key: const ValueKey('admin-panel'), user: user);
-          } else {
-            child = DashboardPage(
-              key: const ValueKey('dashboard-page'),
-              user: user,
-            );
-          }
+          child = _AuthenticatedEntry(
+            key: ValueKey('auth-entry-${user.uid}'),
+            user: user,
+          );
         } else {
           child = const LoginPage(key: ValueKey('login-page'));
         }
@@ -338,6 +337,194 @@ class AuthGate extends StatelessWidget {
           child: child,
         );
       },
+    );
+  }
+}
+
+class _AuthenticatedEntry extends StatefulWidget {
+  const _AuthenticatedEntry({super.key, required this.user});
+
+  final User user;
+
+  @override
+  State<_AuthenticatedEntry> createState() => _AuthenticatedEntryState();
+}
+
+class _AuthenticatedEntryState extends State<_AuthenticatedEntry> {
+  late Future<Map<String, dynamic>?> _profileFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _profileFuture = _loadProfile();
+  }
+
+  Future<Map<String, dynamic>?> _loadProfile() {
+    UserProfileService.resetApiProbe();
+    return UserProfileService().fetchProfile(
+      widget.user.uid,
+      email: widget.user.email,
+    );
+  }
+
+  void _retry() {
+    setState(() => _profileFuture = _loadProfile());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<Map<String, dynamic>?>(
+      future: _profileFuture,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            key: ValueKey('profile-loading'),
+            backgroundColor: GussoniBrand.scaffoldBg,
+            body: Center(
+              child: CircularProgressIndicator(
+                color: GussoniBrand.defaultPrimary,
+              ),
+            ),
+          );
+        }
+
+        if (snapshot.hasError) {
+          return _ProfileBootstrapErrorPage(
+            error: snapshot.error.toString(),
+            onRetry: _retry,
+            onSignOut: AuthGate.signOutEverywhere,
+          );
+        }
+
+        final role = (snapshot.data?['role'] as String?) ?? 'operatore';
+        if (role == 'superadmin') {
+          return AdminPanel(
+            key: const ValueKey('admin-panel'),
+            user: widget.user,
+          );
+        }
+        return DashboardPage(
+          key: const ValueKey('dashboard-page'),
+          user: widget.user,
+        );
+      },
+    );
+  }
+}
+
+class _ProfileBootstrapErrorPage extends StatelessWidget {
+  const _ProfileBootstrapErrorPage({
+    required this.error,
+    required this.onRetry,
+    required this.onSignOut,
+  });
+
+  final String error;
+  final VoidCallback onRetry;
+  final Future<void> Function() onSignOut;
+
+  bool get _looksLikeMysqlSetupIssue {
+    final lower = error.toLowerCase();
+    return lower.contains('api profilo mysql non disponibile') ||
+        lower.contains('/api/app/install.php') ||
+        lower.contains('/api/app/profile.php');
+  }
+
+  bool get _looksLikeAuthIssue {
+    final lower = error.toLowerCase();
+    return lower.contains('token mancante') ||
+        lower.contains('token non valido') ||
+        lower.contains('utente non autenticato') ||
+        lower.contains('401');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: GussoniBrand.scaffoldBg,
+      body: Center(
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 560),
+          margin: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(24),
+          decoration: GussoniBrand.glassPanel(radius: 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Icon(
+                Icons.storage_rounded,
+                size: 34,
+                color: GussoniBrand.defaultPrimary,
+              ),
+              const SizedBox(height: 14),
+              Text(
+                _looksLikeAuthIssue
+                    ? 'Sessione da riallineare'
+                    : _looksLikeMysqlSetupIssue
+                    ? 'Database MySQL da inizializzare'
+                    : 'Errore di avvio piattaforma',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: GussoniBrand.textPrimary,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _looksLikeAuthIssue
+                    ? 'Il backend risponde, ma la sessione API non è allineata. '
+                          'Prova a uscire e rientrare, oppure aggiorna la pagina.'
+                    : _looksLikeMysqlSetupIssue
+                    ? 'Nexora ora usa MySQL per profilo, ruoli e permessi. '
+                          'Esegui l’installer sul server e poi riprova.'
+                    : 'Il backend risponde con un errore durante il bootstrap del profilo. '
+                          'Controlliamo insieme il dettaglio qui sotto.',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.45,
+                  color: GussoniBrand.textSecondary,
+                ),
+              ),
+              if (_looksLikeMysqlSetupIssue) ...[
+                const SizedBox(height: 12),
+                SelectableText(
+                  'https://nexora.sviluppo.host/api/app/install.php?run=yes',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: GussoniBrand.info,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
+              Text(
+                error,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  height: 1.35,
+                  color: GussoniBrand.error,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  FilledButton.icon(
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh_rounded, size: 16),
+                    label: const Text('Riprova'),
+                  ),
+                  const SizedBox(width: 10),
+                  TextButton(
+                    onPressed: () => onSignOut(),
+                    child: const Text('Esci'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -445,23 +632,21 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _resolveIdentityForEmail(String email) async {
     _lastLookupEmail = email;
     try {
-      final query = await FirebaseFirestore.instance
-          .collection('users')
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
+      final identity = await UserProfileService().identityByEmail(email);
       if (!mounted || _emailController.text.trim().toLowerCase() != email) {
         return;
       }
 
-      final doc = query.docs.isEmpty ? null : query.docs.first.data();
       setState(() {
-        _identity = doc == null
+        _identity = identity == null
             ? null
             : _LoginIdentity(
-                displayName: (doc['displayName'] as String? ?? '').trim(),
-                avatarUrl: ((doc['avatarUrl'] as String?) ?? '').trim(),
-                email: (doc['email'] as String? ?? email).trim(),
+                displayName: identity.displayName,
+                avatarUrl: identity.avatarUrl,
+                email: identity.email,
+                brandLogoUrl: identity.brandLogoUrl,
+                brandColor: identity.brandColor,
+                brandingEnabled: identity.brandingEnabled,
               );
         _isResolvingIdentity = false;
       });
@@ -531,6 +716,24 @@ class _LoginPageState extends State<LoginPage> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (identity?.hasBrandLogo ?? false) ...[
+          ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: Container(
+              width: 180,
+              height: 56,
+              color: GussoniBrand.sidebarBg,
+              alignment: Alignment.center,
+              child: Image.network(
+                identity!.brandLogoUrl,
+                fit: BoxFit.contain,
+                height: 34,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
         _LoginAvatar(identity: identity, loading: _isResolvingIdentity),
         const SizedBox(height: 22),
         Text(
@@ -600,9 +803,11 @@ class _LoginPageState extends State<LoginPage> {
                 ),
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Gussoni Consulenze · Area riservata',
-          style: TextStyle(
+        Text(
+          (identity?.hasBrandLogo ?? false)
+              ? 'Area riservata'
+              : 'Nexora · Area riservata',
+          style: const TextStyle(
             fontSize: 12,
             color: GussoniBrand.textMuted,
             fontWeight: FontWeight.w500,
@@ -800,11 +1005,17 @@ class _LoginIdentity {
     required this.displayName,
     required this.avatarUrl,
     required this.email,
+    required this.brandLogoUrl,
+    required this.brandColor,
+    required this.brandingEnabled,
   });
 
   final String displayName;
   final String avatarUrl;
   final String email;
+  final String brandLogoUrl;
+  final String brandColor;
+  final bool brandingEnabled;
 
   String get resolvedDisplayName {
     if (displayName.isNotEmpty) return displayName;
@@ -828,6 +1039,8 @@ class _LoginIdentity {
     if (parts.isNotEmpty) return parts.first[0].toUpperCase();
     return 'N';
   }
+
+  bool get hasBrandLogo => brandingEnabled && brandLogoUrl.trim().isNotEmpty;
 }
 
 class _LoginAvatar extends StatelessWidget {
@@ -1132,8 +1345,6 @@ class _DashboardPageState extends State<DashboardPage> {
   StreamSubscription<CrmData>? _crmDataSubscription;
   bool _uiStateRestored = false;
   final _pushTokenService = PushTokenRegistrationService();
-  StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
-  _userPreferencesSub;
   bool _autoAlignedPlanningWeek = false;
   // Opportunità da passare alla schermata Preventivi dopo navigazione
   Opportunity? _pendingOpp;
@@ -1146,6 +1357,7 @@ class _DashboardPageState extends State<DashboardPage> {
   String? _desktopWallpaperUrl;
   bool _desktopNotificationsEnabled = true;
   bool _desktopPreferencesInitialized = false;
+  Color? _profileAccentColor;
   Map<String, dynamic>? _desktopSessionState;
   bool _desktopSessionInitialized = false;
   List<DesktopTimerEntry> _desktopTimers = const [];
@@ -1167,6 +1379,9 @@ class _DashboardPageState extends State<DashboardPage> {
   bool _backlogCleanupStarted = false;
   int _taskQueryLimit = 120;
   static const int _taskQueryLimitMax = 1500;
+
+  bool _isTeamModuleEnabled(String moduleId) =>
+      _teamInfo?.hasModule(moduleId) ?? false;
 
   // Submenu ToDo (0=Task, 1=Carico, 2=Agenda)
   int _todoSub = 0;
@@ -1484,6 +1699,13 @@ class _DashboardPageState extends State<DashboardPage> {
     _teamRepository.watchUserTeam(widget.user.uid).listen((teamInfo) {
       if (!mounted) return;
       setState(() => _teamInfo = teamInfo);
+      final teamAccent =
+          teamInfo != null && teamInfo.hasModule(TeamExtraModule.customBranding)
+          ? hexToColor(teamInfo.brandColor)
+          : null;
+      if (teamAccent != null) {
+        GussoniBrand.applyAccent(teamAccent);
+      }
       if (teamInfo != null) {
         _loadMemberTimeTracks(teamInfo);
       }
@@ -1492,16 +1714,11 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _listenToUserPreferences() {
-    // MySQL-first: se l'app API è deployata, le preferenze (tema, wallpaper,
-    // notifiche, ruolo) arrivano dal profilo MySQL; altrimenti resta il
-    // listener Firestore storico.
+    // MySQL-only: Firebase resta solo per Auth e notifiche push.
     unawaited(() async {
       final service = UserProfileService();
-      if (!await service.apiAvailable()) {
-        _listenToUserPreferencesFirestore();
-        return;
-      }
-      final data = await service.fetchProfile(
+      final data =
+          await service.fetchProfile(
             widget.user.uid,
             email: widget.user.email,
           ) ??
@@ -1511,50 +1728,76 @@ class _DashboardPageState extends State<DashboardPage> {
     }());
   }
 
-  void _listenToUserPreferencesFirestore() {
-    _userPreferencesSub = FirebaseFirestore.instance
-        .collection('users')
-        .doc(widget.user.uid)
-        .snapshots()
-        .listen((snapshot) {
-          if (!mounted) return;
-          final data = snapshot.data() ?? const <String, dynamic>{};
-          _applyUserPreferences(data);
-        });
+  void _applyUserPreferences(Map<String, dynamic> data) {
+    final nextWallpaper = (data['desktopWallpaperUrl'] as String?)?.trim();
+    final nextNotifications =
+        data['desktopNotificationsEnabled'] as bool? ?? true;
+    final profileAccent = hexToColor(data['accentColorHex'] as String?);
+    _profileAccentColor = profileAccent;
+    final teamAccent = _isTeamModuleEnabled(TeamExtraModule.customBranding)
+        ? hexToColor(_teamInfo?.brandColor)
+        : null;
+    GussoniBrand.applyAccent(teamAccent ?? profileAccent);
+    final notificationsChanged =
+        nextNotifications != _desktopNotificationsEnabled;
+    final shouldApplyNotificationPreference =
+        !_desktopPreferencesInitialized || notificationsChanged;
+    setState(() {
+      _desktopWallpaperUrl = nextWallpaper != null && nextWallpaper.isNotEmpty
+          ? nextWallpaper
+          : null;
+      _desktopNotificationsEnabled = nextNotifications;
+      _desktopPreferencesInitialized = true;
+    });
+    if (shouldApplyNotificationPreference) {
+      if (nextNotifications) {
+        unawaited(
+          _pushTokenService.start(
+            userId: widget.user.uid,
+            repository: _repository,
+          ),
+        );
+      } else {
+        unawaited(_pushTokenService.stop());
+      }
+    }
   }
 
-  void _applyUserPreferences(Map<String, dynamic> data) {
-          final nextWallpaper = (data['desktopWallpaperUrl'] as String?)
-              ?.trim();
-          final nextNotifications =
-              data['desktopNotificationsEnabled'] as bool? ?? true;
-          GussoniBrand.applyAccent(
-            hexToColor(data['accentColorHex'] as String?),
-          );
-          final notificationsChanged =
-              nextNotifications != _desktopNotificationsEnabled;
-          final shouldApplyNotificationPreference =
-              !_desktopPreferencesInitialized || notificationsChanged;
-          setState(() {
-            _desktopWallpaperUrl =
-                nextWallpaper != null && nextWallpaper.isNotEmpty
-                ? nextWallpaper
-                : null;
-            _desktopNotificationsEnabled = nextNotifications;
-            _desktopPreferencesInitialized = true;
-          });
-          if (shouldApplyNotificationPreference) {
-            if (nextNotifications) {
-              unawaited(
-                _pushTokenService.start(
-                  userId: widget.user.uid,
-                  repository: _repository,
-                ),
-              );
-            } else {
-              unawaited(_pushTokenService.stop());
-            }
-          }
+  void _applyTeamBranding({String? brandLogoUrl, String? brandColor}) {
+    final currentTeam = _teamInfo;
+    if (currentTeam == null) return;
+    final nextTeam = currentTeam.copyWith(
+      brandLogoUrl: brandLogoUrl,
+      clearBrandLogoUrl: brandLogoUrl == null,
+      brandColor: brandColor,
+      clearBrandColor: (brandColor ?? '').trim().isEmpty,
+    );
+    setState(() => _teamInfo = nextTeam);
+    GussoniBrand.applyAccent(
+      _isTeamModuleEnabled(TeamExtraModule.customBranding)
+          ? (hexToColor(nextTeam.brandColor) ?? _profileAccentColor)
+          : _profileAccentColor,
+    );
+  }
+
+  void _applyTeamCustomFields(List<TeamCustomFieldDefinition> definitions) {
+    final currentTeam = _teamInfo;
+    if (currentTeam == null) {
+      return;
+    }
+    setState(() {
+      _teamInfo = currentTeam.copyWith(customFieldDefinitions: definitions);
+    });
+  }
+
+  void _applyTeamRoles(List<String> roles) {
+    final currentTeam = _teamInfo;
+    if (currentTeam == null) {
+      return;
+    }
+    setState(() {
+      _teamInfo = currentTeam.copyWith(teamRoles: roles);
+    });
   }
 
   Future<void> _loadDesktopSessionCache() async {
@@ -2127,14 +2370,15 @@ class _DashboardPageState extends State<DashboardPage> {
       activeIcon: Icons.badge,
       accent: const Color(0xFFEF9A6D),
     ),
-    (
-      id: 'chat',
-      label: 'Chat Team',
-      subtitle: 'Messaggi e coordinamento',
-      icon: Icons.forum_outlined,
-      activeIcon: Icons.forum,
-      accent: const Color(0xFF4F6D7A),
-    ),
+    if (_isTeamModuleEnabled(TeamExtraModule.teamChat))
+      (
+        id: 'chat',
+        label: 'Chat Team',
+        subtitle: 'Messaggi e coordinamento',
+        icon: Icons.forum_outlined,
+        activeIcon: Icons.forum,
+        accent: const Color(0xFF4F6D7A),
+      ),
     (
       id: 'memo',
       label: 'Memo',
@@ -2924,6 +3168,19 @@ class _DashboardPageState extends State<DashboardPage> {
               onCreateVacation: (v) => _createVacation(workspace, v),
               onDeleteVacation: (v) => _deleteVacation(workspace, v),
               onOpenCreateUserDialog: _openCreateUserDialog,
+              integrationsEnabled: _isTeamModuleEnabled(
+                TeamExtraModule.integrations,
+              ),
+              brandingEnabled: _isTeamModuleEnabled(
+                TeamExtraModule.customBranding,
+              ),
+              onBrandingChanged: ({String? brandLogoUrl, String? brandColor}) =>
+                  _applyTeamBranding(
+                    brandLogoUrl: brandLogoUrl,
+                    brandColor: brandColor,
+                  ),
+              onCustomFieldsChanged: _applyTeamCustomFields,
+              onTeamRolesChanged: _applyTeamRoles,
               onRemoveTeamMember: _teamInfo != null
                   ? (memberId) => _removeTeamMember(_teamInfo!, memberId)
                   : null,
@@ -3131,43 +3388,34 @@ class _DashboardPageState extends State<DashboardPage> {
             .where((task) => task.status != TaskStatus.done)
             .toList()
           ..sort((a, b) => a.deadline.compareTo(b.deadline));
-    final pendingDeals =
-        _crmData.deals
-            .where((deal) => deal.status == DealFirestoreStatus.open)
+    final pendingOpportunities =
+        workspace.opportunities
+            .where(
+              (opportunity) =>
+                  opportunity.status != OpportunityStatus.persa &&
+                  opportunity.status != OpportunityStatus.presaInCarico,
+            )
             .toList()
           ..sort(
-            (a, b) => (b.updatedAt ?? DateTime.now()).compareTo(
-              a.updatedAt ?? DateTime.now(),
+            (a, b) => (b.updatedAt ?? b.createdAt).compareTo(
+              a.updatedAt ?? a.createdAt,
             ),
           );
     final pendingQuotations =
-        _crmData.quotations
+        workspace.gussoniQuotations
             .where(
               (quotation) =>
-                  quotation.status == QuotationStatus.draft ||
-                  quotation.status == QuotationStatus.sent,
+                  quotation.status == PreventivoStatus.draft ||
+                  quotation.status == PreventivoStatus.sent,
             )
             .toList()
-          ..sort(
-            (a, b) => (b.updatedAt ?? DateTime.now()).compareTo(
-              a.updatedAt ?? DateTime.now(),
-            ),
-          );
+          ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-    final followUpDeals =
-        _crmData.deals
-            .where(
-              (d) =>
-                  d.status == DealFirestoreStatus.open &&
-                  d.expectedClosingDate != null &&
-                  d.expectedClosingDate!.isAfter(
-                    DateTime.now().subtract(const Duration(days: 1)),
-                  ),
-            )
-            .toList()
-          ..sort(
-            (a, b) => a.expectedClosingDate!.compareTo(b.expectedClosingDate!),
-          );
+    final followUps = _buildDashboardFollowUps(
+      workspace,
+      pendingOpportunities,
+      pendingQuotations,
+    );
 
     return <DesktopWidgetPane>[
       DesktopWidgetPane(
@@ -3202,8 +3450,7 @@ class _DashboardPageState extends State<DashboardPage> {
         icon: Icons.trending_up_rounded,
         accent: const Color(0xFFB05A3C),
         child: _DesktopDealsSummaryWidget(
-          deals: pendingDeals,
-          crmData: _crmData,
+          opportunities: pendingOpportunities,
           companies: workspace.companies,
         ),
       ),
@@ -3226,10 +3473,10 @@ class _DashboardPageState extends State<DashboardPage> {
         accent: const Color(0xFF8B1A1A),
         defaultSize: const Size(280, 210),
         child: _DesktopKpiFlashWidget(
-          openDealsCount: pendingDeals.length,
-          openDealsValue: pendingDeals.fold<double>(
+          openDealsCount: pendingOpportunities.length,
+          openDealsValue: pendingOpportunities.fold<double>(
             0.0,
-            (sum, d) => sum + d.value,
+            (sum, opportunity) => sum + (opportunity.estimatedValue ?? 0),
           ),
           runningTimers: _desktopTimers.where((t) => t.isRunning).length,
           pendingTasks: todayTasks.length,
@@ -3243,11 +3490,63 @@ class _DashboardPageState extends State<DashboardPage> {
         accent: const Color(0xFFA8332C),
         defaultSize: const Size(290, 270),
         child: _DesktopFollowUpWidget(
-          deals: followUpDeals,
+          items: followUps,
           companies: workspace.companies,
         ),
       ),
     ];
+  }
+
+  List<_DashboardFollowUpItem> _buildDashboardFollowUps(
+    WorkspaceSnapshot workspace,
+    List<Opportunity> opportunities,
+    List<Preventivo> quotations,
+  ) {
+    final today = DateTime.now();
+    final items = <_DashboardFollowUpItem>[];
+    for (final opportunity in opportunities) {
+      final due =
+          opportunity.scadenzaOperativa ??
+          opportunity.scadenzaPresentazione ??
+          opportunity.bandoDeadline;
+      if (due == null) continue;
+      items.add(
+        _DashboardFollowUpItem(
+          title: opportunity.title,
+          companyId: opportunity.companyId,
+          dueAt: due,
+          kind: 'Opportunità',
+        ),
+      );
+    }
+    for (final quotation in quotations) {
+      final due = quotation.expiresAt;
+      if (due == null) continue;
+      items.add(
+        _DashboardFollowUpItem(
+          title: 'Preventivo ${quotation.id}',
+          companyId: quotation.companyId,
+          dueAt: due,
+          kind: 'Preventivo',
+        ),
+      );
+    }
+    for (final task in workspace.tasks.where(
+      (t) => t.status != TaskStatus.done,
+    )) {
+      if (task.deadline.isBefore(today.add(const Duration(days: 14)))) {
+        items.add(
+          _DashboardFollowUpItem(
+            title: task.name,
+            companyId: task.companyId,
+            dueAt: task.deadline,
+            kind: 'Task',
+          ),
+        );
+      }
+    }
+    items.sort((a, b) => a.dueAt.compareTo(b.dueAt));
+    return items;
   }
 
   Widget _buildDesktopShell(
@@ -3279,6 +3578,10 @@ class _DashboardPageState extends State<DashboardPage> {
       dashboardWidgets: desktopWidgets,
       controller: _desktopController,
       userLabel: widget.user.email ?? widget.user.uid,
+      brandLogoUrl: _isTeamModuleEnabled(TeamExtraModule.customBranding)
+          ? _teamInfo?.brandLogoUrl
+          : null,
+      brandLabel: _teamInfo?.name,
       onLogout: AuthGate.signOutEverywhere,
       topBarTrailing: _TopBarTimerControl(
         timers: _desktopTimers,
@@ -3287,10 +3590,12 @@ class _DashboardPageState extends State<DashboardPage> {
         onOpenPendingTimer: _openPendingDesktopTimer,
         onDiscardPendingTimer: _discardPendingDesktopTimer,
       ),
-      floatingChat: NexoraAiChatBubble(
-        workspaceContext: _aiContextFor(workspace),
-        onOpenModule: () => _desktopController.openApp('nexora_ai'),
-      ),
+      floatingChat: _isTeamModuleEnabled(TeamExtraModule.nexoraAi)
+          ? NexoraAiChatBubble(
+              workspaceContext: _aiContextFor(workspace),
+              onOpenModule: () => _desktopController.openApp('nexora_ai'),
+            )
+          : null,
     );
   }
 
@@ -3300,15 +3605,16 @@ class _DashboardPageState extends State<DashboardPage> {
     EdgeInsets pagePadding,
   ) {
     return <DesktopShellApp>[
-      DesktopShellApp(
-        id: 'bandi',
-        title: 'Bandi',
-        subtitle: 'Centro Studi e finanza agevolata',
-        icon: Icons.travel_explore_rounded,
-        accent: const Color(0xFF946B2D),
-        desktopShortcut: true,
-        child: _buildBandiWindow(workspace, pagePadding),
-      ),
+      if (_isTeamModuleEnabled(TeamExtraModule.bandi))
+        DesktopShellApp(
+          id: 'bandi',
+          title: 'Bandi',
+          subtitle: 'Centro Studi e finanza agevolata',
+          icon: Icons.travel_explore_rounded,
+          accent: const Color(0xFF946B2D),
+          desktopShortcut: true,
+          child: _buildBandiWindow(workspace, pagePadding),
+        ),
       DesktopShellApp(
         id: 'companies',
         title: 'Società',
@@ -3383,6 +3689,19 @@ class _DashboardPageState extends State<DashboardPage> {
         onHeaderAction: () => _openProjectDialog(context, workspace),
         child: _buildProjectsWindow(workspace, pagePadding),
       ),
+      if (_isTeamModuleEnabled(TeamExtraModule.nexoraPos))
+        DesktopShellApp(
+          id: 'pos',
+          title: 'Nexora POS',
+          subtitle: 'Incassi in presenza e mobile checkout',
+          icon: Icons.contactless_rounded,
+          accent: const Color(0xFF0F8F7D),
+          desktopShortcut: true,
+          headerActionIcon: Icons.add_card_rounded,
+          headerActionTooltip: 'Nuovo incasso',
+          onHeaderAction: () => _desktopController.openApp('pos'),
+          child: _buildPosWindow(workspace, pagePadding),
+        ),
       DesktopShellApp(
         id: 'archive',
         title: 'Archivio',
@@ -3471,24 +3790,37 @@ class _DashboardPageState extends State<DashboardPage> {
         accent: const Color(0xFF8B1A1A),
         child: _buildStatsWindow(workspace, pagePadding),
       ),
-      DesktopShellApp(
-        id: 'chat',
-        title: 'Chat Team',
-        subtitle: 'Comunicazione interna',
-        icon: Icons.forum_rounded,
-        accent: const Color(0xFF4F6D7A),
-        child: _buildChatWindow(),
-      ),
-      DesktopShellApp(
-        id: 'nexora_ai',
-        title: 'Nexora AI',
-        subtitle: 'Assistente intelligente',
-        icon: Icons.auto_awesome_rounded,
-        accent: const Color(0xFF5B1205),
-        desktopShortcut: true,
-        child: _buildNexoraAiWindow(workspace),
-      ),
+      if (_isTeamModuleEnabled(TeamExtraModule.teamChat))
+        DesktopShellApp(
+          id: 'chat',
+          title: 'Chat Team',
+          subtitle: 'Comunicazione interna',
+          icon: Icons.forum_rounded,
+          accent: const Color(0xFF4F6D7A),
+          child: _buildChatWindow(),
+        ),
+      if (_isTeamModuleEnabled(TeamExtraModule.nexoraAi))
+        DesktopShellApp(
+          id: 'nexora_ai',
+          title: 'Nexora AI',
+          subtitle: 'Assistente intelligente',
+          icon: Icons.auto_awesome_rounded,
+          accent: const Color(0xFF5B1205),
+          desktopShortcut: true,
+          child: _buildNexoraAiWindow(workspace),
+        ),
     ];
+  }
+
+  Widget _buildPosWindow(WorkspaceSnapshot workspace, EdgeInsets pagePadding) {
+    return Padding(
+      padding: pagePadding,
+      child: NexoraPosScreen(
+        workspace: workspace,
+        userId: widget.user.uid,
+        scopeLabel: _teamInfo?.name ?? 'workspace',
+      ),
+    );
   }
 
   /// Contesto workspace condiviso tra modulo Nexora AI e chatbot flottante.
@@ -4459,7 +4791,6 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void dispose() {
     _crmDataSubscription?.cancel();
-    _userPreferencesSub?.cancel();
     _uiStateDebounce?.cancel();
     _googleSyncDebounce?.cancel();
     for (final sub in _memberTimeTrackSubs.values) {
@@ -4916,6 +5247,9 @@ class _DashboardPageState extends State<DashboardPage> {
           child: _EditOpportunityForm(
             opportunity: opp,
             companies: workspace.companies,
+            customFieldDefinitions:
+                _teamInfo?.fieldsForModule(CustomFieldModule.opportunities) ??
+                const [],
             onSubmit: (updated) async {
               await _repository.updateOpportunity(widget.user.uid, updated);
               setState(() => _detailEntity = updated);
@@ -4966,6 +5300,8 @@ class _DashboardPageState extends State<DashboardPage> {
         companies: workspace.companies,
         contact: contact,
         preselectedCompanyId: preselectedCompanyId,
+        customFieldDefinitions:
+            _teamInfo?.fieldsForModule(CustomFieldModule.contacts) ?? const [],
         onSave: (c) async {
           if (contact == null) {
             await _repository.createCompanyContact(widget.user.uid, c);
@@ -6440,6 +6776,9 @@ class _DashboardPageState extends State<DashboardPage> {
           ),
           child: CompanyFormCard(
             company: company,
+            customFieldDefinitions:
+                _teamInfo?.fieldsForModule(CustomFieldModule.companies) ??
+                const [],
             onSubmit: company == null ? _createCompany : _updateCompany,
           ),
         ),
@@ -6531,6 +6870,9 @@ class _DashboardPageState extends State<DashboardPage> {
               workspace: workspace,
               project: project,
               preselectedCompanyId: preselectedCompanyId,
+              customFieldDefinitions:
+                  _teamInfo?.fieldsForModule(CustomFieldModule.projects) ??
+                  const [],
               onSubmit: _updateProject,
             ),
           ),
@@ -6631,6 +6973,8 @@ class _DashboardPageState extends State<DashboardPage> {
         repository: _repository,
         teamMembers: _teamInfo?.activeMembers ?? [],
         templates: workspace.youdoxConfig.projectTemplates,
+        customFieldDefinitions:
+            _teamInfo?.fieldsForModule(CustomFieldModule.projects) ?? const [],
         onCreated: (id) => setState(() => selectedIndex = 5),
       ),
     );
@@ -7349,6 +7693,18 @@ class _DashboardPageState extends State<DashboardPage> {
                           onDeleteVacation: (v) =>
                               _deleteVacation(workspace, v),
                           onOpenCreateUserDialog: _openCreateUserDialog,
+                          integrationsEnabled: _isTeamModuleEnabled(
+                            TeamExtraModule.integrations,
+                          ),
+                          brandingEnabled: _isTeamModuleEnabled(
+                            TeamExtraModule.customBranding,
+                          ),
+                          onBrandingChanged:
+                              ({String? brandLogoUrl, String? brandColor}) =>
+                                  _applyTeamBranding(
+                                    brandLogoUrl: brandLogoUrl,
+                                    brandColor: brandColor,
+                                  ),
                           onRemoveTeamMember: _teamInfo != null
                               ? (memberId) =>
                                     _removeTeamMember(_teamInfo!, memberId)
@@ -7425,10 +7781,13 @@ class _DashboardPageState extends State<DashboardPage> {
                 onOpenPendingTimer: _openPendingDesktopTimer,
                 onDiscardPendingTimer: _discardPendingDesktopTimer,
               ),
-              floatingChat: NexoraAiChatBubble(
-                workspaceContext: _aiContextFor(workspace),
-                onOpenModule: () => _desktopController.openApp('nexora_ai'),
-              ),
+              floatingChat: _isTeamModuleEnabled(TeamExtraModule.nexoraAi)
+                  ? NexoraAiChatBubble(
+                      workspaceContext: _aiContextFor(workspace),
+                      onOpenModule: () =>
+                          _desktopController.openApp('nexora_ai'),
+                    )
+                  : null,
             );
           },
         );
@@ -9963,6 +10322,7 @@ class ProjectFormCard extends StatefulWidget {
     super.key,
     required this.workspace,
     required this.onSubmit,
+    this.customFieldDefinitions = const [],
     this.project,
     this.preselectedCompanyId,
   });
@@ -9971,6 +10331,7 @@ class ProjectFormCard extends StatefulWidget {
   final Project? project;
   final String? preselectedCompanyId;
   final Future<void> Function(Project project) onSubmit;
+  final List<TeamCustomFieldDefinition> customFieldDefinitions;
 
   @override
   State<ProjectFormCard> createState() => _ProjectFormCardState();
@@ -9983,6 +10344,8 @@ class _ProjectFormCardState extends State<ProjectFormCard> {
   String? _companyId;
   String _status = 'active';
   bool _saving = false;
+  late final Map<String, TextEditingController> _customFieldControllers;
+  late final Map<String, String?> _customFieldSelectValues;
 
   @override
   void initState() {
@@ -9991,12 +10354,23 @@ class _ProjectFormCardState extends State<ProjectFormCard> {
     _code = TextEditingController(text: widget.project?.code ?? '');
     _companyId = widget.project?.companyId ?? widget.preselectedCompanyId;
     _status = widget.project?.status ?? 'active';
+    _customFieldControllers = _buildCustomFieldControllers(
+      widget.customFieldDefinitions,
+      widget.project?.customFields ?? const {},
+    );
+    _customFieldSelectValues = _buildCustomFieldSelectValues(
+      widget.customFieldDefinitions,
+      widget.project?.customFields ?? const {},
+    );
   }
 
   @override
   void dispose() {
     _name.dispose();
     _code.dispose();
+    for (final controller in _customFieldControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -10092,6 +10466,16 @@ class _ProjectFormCardState extends State<ProjectFormCard> {
                 ),
               ],
             ),
+            if (widget.customFieldDefinitions.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              CustomFieldsSection(
+                definitions: widget.customFieldDefinitions,
+                controllers: _customFieldControllers,
+                selectValues: _customFieldSelectValues,
+                onSelectChanged: (fieldId, value) =>
+                    setState(() => _customFieldSelectValues[fieldId] = value),
+              ),
+            ],
             const SizedBox(height: 16),
             SizedBox(
               width: double.infinity,
@@ -10112,6 +10496,11 @@ class _ProjectFormCardState extends State<ProjectFormCard> {
                             name: _name.text.trim(),
                             code: _code.text.trim(),
                             status: _status,
+                            customFields: _collectCustomFieldValues(
+                              widget.customFieldDefinitions,
+                              _customFieldControllers,
+                              _customFieldSelectValues,
+                            ),
                           );
                           await widget.onSubmit(project);
                           if (!mounted) {
@@ -10309,10 +10698,16 @@ class _TablePager extends StatelessWidget {
 }
 
 class CompanyFormCard extends StatefulWidget {
-  const CompanyFormCard({super.key, this.company, required this.onSubmit});
+  const CompanyFormCard({
+    super.key,
+    this.company,
+    required this.onSubmit,
+    this.customFieldDefinitions = const [],
+  });
 
   final Company? company;
   final Future<void> Function(Company company) onSubmit;
+  final List<TeamCustomFieldDefinition> customFieldDefinitions;
 
   @override
   State<CompanyFormCard> createState() => _CompanyFormCardState();
@@ -10352,6 +10747,8 @@ class _CompanyFormCardState extends State<CompanyFormCard> {
   CompanySize? _dimensioneImpresa;
   bool _export = false;
   bool _saving = false;
+  late final Map<String, TextEditingController> _customFieldControllers;
+  late final Map<String, String?> _customFieldSelectValues;
 
   @override
   void initState() {
@@ -10395,6 +10792,14 @@ class _CompanyFormCardState extends State<CompanyFormCard> {
     _companyType = c?.companyType ?? CompanyType.profit;
     _dimensioneImpresa = c?.dimensioneImpresa;
     _export = c?.export ?? false;
+    _customFieldControllers = _buildCustomFieldControllers(
+      widget.customFieldDefinitions,
+      c?.customFields ?? const {},
+    );
+    _customFieldSelectValues = _buildCustomFieldSelectValues(
+      widget.customFieldDefinitions,
+      c?.customFields ?? const {},
+    );
   }
 
   @override
@@ -10429,6 +10834,9 @@ class _CompanyFormCardState extends State<CompanyFormCard> {
       _percExport,
     ]) {
       ctrl.dispose();
+    }
+    for (final controller in _customFieldControllers.values) {
+      controller.dispose();
     }
     super.dispose();
   }
@@ -10479,6 +10887,11 @@ class _CompanyFormCardState extends State<CompanyFormCard> {
         percentualeExport: double.tryParse(
           _percExport.text.replaceAll(',', '.'),
         ),
+        customFields: _collectCustomFieldValues(
+          widget.customFieldDefinitions,
+          _customFieldControllers,
+          _customFieldSelectValues,
+        ),
       );
       await widget.onSubmit(company);
       if (mounted) {
@@ -10519,40 +10932,6 @@ class _CompanyFormCardState extends State<CompanyFormCard> {
                 _SectionLabel('Classificazione'),
                 Row(
                   children: [
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: DropdownButtonFormField<CompanyType>(
-                          value: _companyType,
-                          decoration: const InputDecoration(
-                            labelText: 'Tipo soggetto',
-                            border: OutlineInputBorder(),
-                          ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: CompanyType.profit,
-                              child: Text('P — Profit'),
-                            ),
-                            DropdownMenuItem(
-                              value: CompanyType.nonProfit,
-                              child: Text('NP — Non Profit'),
-                            ),
-                            DropdownMenuItem(
-                              value: CompanyType.pa,
-                              child: Text('PA — Pubblica Amm.'),
-                            ),
-                            DropdownMenuItem(
-                              value: CompanyType.pf,
-                              child: Text('PF — Profit/Fondazione'),
-                            ),
-                          ],
-                          onChanged: (v) => setState(
-                            () => _companyType = v ?? CompanyType.profit,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
                     Expanded(
                       child: Padding(
                         padding: const EdgeInsets.only(bottom: 12),
@@ -10725,6 +11104,15 @@ class _CompanyFormCardState extends State<CompanyFormCard> {
                     ),
                   ],
                 ),
+                if (widget.customFieldDefinitions.isNotEmpty)
+                  CustomFieldsSection(
+                    definitions: widget.customFieldDefinitions,
+                    controllers: _customFieldControllers,
+                    selectValues: _customFieldSelectValues,
+                    onSelectChanged: (fieldId, value) => setState(
+                      () => _customFieldSelectValues[fieldId] = value,
+                    ),
+                  ),
 
                 // ── Note ─────────────────────────────────────────────────
                 _FormField(controller: _notes, label: 'Note CRM', maxLines: 3),
@@ -10814,10 +11202,12 @@ class _EditOpportunityForm extends StatefulWidget {
   const _EditOpportunityForm({
     required this.opportunity,
     required this.companies,
+    required this.customFieldDefinitions,
     required this.onSubmit,
   });
   final Opportunity opportunity;
   final List<Company> companies;
+  final List<TeamCustomFieldDefinition> customFieldDefinitions;
   final Future<void> Function(Opportunity) onSubmit;
 
   @override
@@ -10858,6 +11248,8 @@ class _EditOpportunityFormState extends State<_EditOpportunityForm>
   late final TextEditingController _noteRendCtrl;
 
   bool _saving = false;
+  late final Map<String, TextEditingController> _customFieldControllers;
+  late final Map<String, String?> _customFieldSelectValues;
 
   _EditOpportunityFormState()
     : _status = OpportunityStatus.inAttesa,
@@ -10905,6 +11297,14 @@ class _EditOpportunityFormState extends State<_EditOpportunityForm>
     _termineRend = o.termineRendicontazione;
     _statoRend = o.statoRendicontazione;
     _noteRendCtrl = TextEditingController(text: o.noteRendicontazione);
+    _customFieldControllers = _buildCustomFieldControllers(
+      widget.customFieldDefinitions,
+      o.customFields,
+    );
+    _customFieldSelectValues = _buildCustomFieldSelectValues(
+      widget.customFieldDefinitions,
+      o.customFields,
+    );
   }
 
   @override
@@ -10928,6 +11328,9 @@ class _EditOpportunityFormState extends State<_EditOpportunityForm>
       _noteRendCtrl,
     ]) {
       c.dispose();
+    }
+    for (final controller in _customFieldControllers.values) {
+      controller.dispose();
     }
     super.dispose();
   }
@@ -10971,6 +11374,11 @@ class _EditOpportunityFormState extends State<_EditOpportunityForm>
         statoRendicontazione: _statoRend,
         noteRendicontazione: _noteRendCtrl.text.trim(),
         updatedAt: DateTime.now(),
+        customFields: _collectCustomFieldValues(
+          widget.customFieldDefinitions,
+          _customFieldControllers,
+          _customFieldSelectValues,
+        ),
       );
       await widget.onSubmit(updated);
       if (mounted) Navigator.of(context).pop();
@@ -11154,6 +11562,15 @@ class _EditOpportunityFormState extends State<_EditOpportunityForm>
                       ),
                       const SizedBox(height: 12),
                       _ff(_notesCtrl, 'Note', maxLines: 3),
+                      if (widget.customFieldDefinitions.isNotEmpty)
+                        CustomFieldsSection(
+                          definitions: widget.customFieldDefinitions,
+                          controllers: _customFieldControllers,
+                          selectValues: _customFieldSelectValues,
+                          onSelectChanged: (fieldId, value) => setState(
+                            () => _customFieldSelectValues[fieldId] = value,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -11698,11 +12115,13 @@ class _ContactDialog extends StatefulWidget {
   const _ContactDialog({
     required this.companies,
     required this.onSave,
+    required this.customFieldDefinitions,
     this.contact,
     this.preselectedCompanyId,
   });
 
   final List<Company> companies;
+  final List<TeamCustomFieldDefinition> customFieldDefinitions;
   final CompanyContact? contact;
   final String? preselectedCompanyId;
   final Future<void> Function(CompanyContact) onSave;
@@ -11719,6 +12138,8 @@ class _ContactDialogState extends State<_ContactDialog> {
   String? _companyId;
   bool _saving = false;
   String? _error;
+  late final Map<String, TextEditingController> _customFieldControllers;
+  late final Map<String, String?> _customFieldSelectValues;
 
   @override
   void initState() {
@@ -11731,6 +12152,14 @@ class _ContactDialogState extends State<_ContactDialog> {
     _companyId = c?.companyId.isNotEmpty == true
         ? c!.companyId
         : widget.preselectedCompanyId;
+    _customFieldControllers = _buildCustomFieldControllers(
+      widget.customFieldDefinitions,
+      c?.customFields ?? const {},
+    );
+    _customFieldSelectValues = _buildCustomFieldSelectValues(
+      widget.customFieldDefinitions,
+      c?.customFields ?? const {},
+    );
   }
 
   @override
@@ -11739,6 +12168,9 @@ class _ContactDialogState extends State<_ContactDialog> {
     _emailCtrl.dispose();
     _phoneCtrl.dispose();
     _roleCtrl.dispose();
+    for (final controller in _customFieldControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -11760,6 +12192,11 @@ class _ContactDialogState extends State<_ContactDialog> {
         email: _emailCtrl.text.trim(),
         phone: _phoneCtrl.text.trim(),
         role: _roleCtrl.text.trim(),
+        customFields: _collectCustomFieldValues(
+          widget.customFieldDefinitions,
+          _customFieldControllers,
+          _customFieldSelectValues,
+        ),
       );
       await widget.onSave(contact);
     } catch (e) {
@@ -11847,6 +12284,17 @@ class _ContactDialogState extends State<_ContactDialog> {
               prefixIcon: Icon(Icons.phone_outlined, size: 18),
             ),
           ),
+          if (widget.customFieldDefinitions.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            CustomFieldsSection(
+              definitions: widget.customFieldDefinitions,
+              controllers: _customFieldControllers,
+              selectValues: _customFieldSelectValues,
+              onSelectChanged: (fieldId, value) =>
+                  setState(() => _customFieldSelectValues[fieldId] = value),
+              compact: true,
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 10),
             Text(
@@ -11877,6 +12325,56 @@ class _ContactDialogState extends State<_ContactDialog> {
       ],
     );
   }
+}
+
+Map<String, TextEditingController> _buildCustomFieldControllers(
+  List<TeamCustomFieldDefinition> definitions,
+  Map<String, dynamic> initialValues,
+) {
+  final controllers = <String, TextEditingController>{};
+  for (final definition in definitions) {
+    if (definition.type == CustomFieldType.select) continue;
+    controllers[definition.id] = TextEditingController(
+      text: initialValues[definition.id]?.toString() ?? '',
+    );
+  }
+  return controllers;
+}
+
+Map<String, String?> _buildCustomFieldSelectValues(
+  List<TeamCustomFieldDefinition> definitions,
+  Map<String, dynamic> initialValues,
+) {
+  final values = <String, String?>{};
+  for (final definition in definitions) {
+    if (definition.type != CustomFieldType.select) continue;
+    final value = initialValues[definition.id]?.toString().trim();
+    values[definition.id] = (value == null || value.isEmpty) ? null : value;
+  }
+  return values;
+}
+
+Map<String, dynamic> _collectCustomFieldValues(
+  List<TeamCustomFieldDefinition> definitions,
+  Map<String, TextEditingController> controllers,
+  Map<String, String?> selectValues,
+) {
+  final values = <String, dynamic>{};
+  for (final definition in definitions) {
+    if (definition.type == CustomFieldType.select) {
+      final value = selectValues[definition.id]?.trim();
+      if (value != null && value.isNotEmpty) {
+        values[definition.id] = value;
+      }
+      continue;
+    }
+    final controller = controllers[definition.id];
+    final value = controller?.text.trim() ?? '';
+    if (value.isNotEmpty) {
+      values[definition.id] = value;
+    }
+  }
+  return values;
 }
 
 class _SectionLabel extends StatelessWidget {
@@ -14300,18 +14798,16 @@ class _DesktopTaskSummaryWidget extends StatelessWidget {
 
 class _DesktopDealsSummaryWidget extends StatelessWidget {
   const _DesktopDealsSummaryWidget({
-    required this.deals,
-    required this.crmData,
+    required this.opportunities,
     required this.companies,
   });
 
-  final List<Deal> deals;
-  final CrmData crmData;
+  final List<Opportunity> opportunities;
   final List<Company> companies;
 
   @override
   Widget build(BuildContext context) {
-    if (deals.isEmpty) {
+    if (opportunities.isEmpty) {
       return const _DesktopWidgetEmptyState(
         label: 'Nessuna opportunità aperta in questo momento.',
       );
@@ -14320,7 +14816,7 @@ class _DesktopDealsSummaryWidget extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${deals.length} deal aperti',
+          '${opportunities.length} opportunità aperte',
           style: const TextStyle(
             color: GussoniBrand.textSecondary,
             fontSize: 11,
@@ -14331,22 +14827,21 @@ class _DesktopDealsSummaryWidget extends StatelessWidget {
         Expanded(
           child: ListView.separated(
             padding: EdgeInsets.zero,
-            itemCount: deals.take(4).length,
+            itemCount: opportunities.take(4).length,
             separatorBuilder: (_, __) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
-              final deal = deals[index];
-              final stage = crmData.dealStages
-                  .where((s) => s.id == deal.stageId)
-                  .firstOrNull;
+              final opportunity = opportunities[index];
               final company = companies
-                  .where((c) => c.id == deal.customerId)
+                  .where((c) => c.id == opportunity.companyId)
                   .firstOrNull;
               return _DesktopSummaryRow(
-                title: deal.title,
+                title: opportunity.title,
                 subtitle:
-                    '${company?.name ?? 'Pipeline'} · ${stage?.name ?? deal.status.label}',
+                    '${company?.name ?? 'Pipeline'} · ${_opportunityStatusLabel(opportunity.status)}',
                 accent: const Color(0xFFB05A3C),
-                trailing: '€${deal.value.toStringAsFixed(0)}',
+                trailing: opportunity.estimatedValue == null
+                    ? null
+                    : '€${opportunity.estimatedValue!.toStringAsFixed(0)}',
               );
             },
           ),
@@ -14362,7 +14857,7 @@ class _DesktopQuotationsSummaryWidget extends StatelessWidget {
     required this.companies,
   });
 
-  final List<Quotation> quotations;
+  final List<Preventivo> quotations;
   final List<Company> companies;
 
   @override
@@ -14392,12 +14887,12 @@ class _DesktopQuotationsSummaryWidget extends StatelessWidget {
             itemBuilder: (context, index) {
               final quotation = quotations[index];
               final company = companies
-                  .where((c) => c.id == quotation.customerId)
+                  .where((c) => c.id == quotation.companyId)
                   .firstOrNull;
               return _DesktopSummaryRow(
-                title: quotation.number,
+                title: 'Preventivo ${quotation.id}',
                 subtitle:
-                    '${company?.name ?? 'Preventivo'} · ${quotation.status.label}',
+                    '${company?.name ?? 'Preventivo'} · ${_preventivoStatusLabel(quotation.status)}',
                 accent: const Color(0xFFB97D10),
                 trailing: '€${quotation.total.toStringAsFixed(0)}',
               );
@@ -14408,6 +14903,23 @@ class _DesktopQuotationsSummaryWidget extends StatelessWidget {
     );
   }
 }
+
+String _opportunityStatusLabel(OpportunityStatus status) => switch (status) {
+  OpportunityStatus.inAttesa => 'In attesa',
+  OpportunityStatus.preventivazione => 'Preventivazione',
+  OpportunityStatus.accettata => 'Accettata',
+  OpportunityStatus.accettataSenzaFirma => 'Accettata senza firma',
+  OpportunityStatus.inAttesaRinnovoAutomatico => 'Rinnovo automatico',
+  OpportunityStatus.presaInCarico => 'Presa in carico',
+  OpportunityStatus.persa => 'Persa',
+};
+
+String _preventivoStatusLabel(PreventivoStatus status) => switch (status) {
+  PreventivoStatus.draft => 'Bozza',
+  PreventivoStatus.sent => 'Inviato',
+  PreventivoStatus.accepted => 'Accettato',
+  PreventivoStatus.rejected => 'Rifiutato',
+};
 
 class _DesktopSummaryRow extends StatelessWidget {
   const _DesktopSummaryRow({
@@ -15040,30 +15552,43 @@ class _DesktopKpiMiniCard extends StatelessWidget {
 
 // ─── Follow-up widget ──────────────────────────────────────────────────────────
 
-class _DesktopFollowUpWidget extends StatelessWidget {
-  const _DesktopFollowUpWidget({required this.deals, required this.companies});
+class _DashboardFollowUpItem {
+  const _DashboardFollowUpItem({
+    required this.title,
+    required this.companyId,
+    required this.dueAt,
+    required this.kind,
+  });
 
-  final List<Deal> deals;
+  final String title;
+  final String companyId;
+  final DateTime dueAt;
+  final String kind;
+}
+
+class _DesktopFollowUpWidget extends StatelessWidget {
+  const _DesktopFollowUpWidget({required this.items, required this.companies});
+
+  final List<_DashboardFollowUpItem> items;
   final List<Company> companies;
 
   @override
   Widget build(BuildContext context) {
-    if (deals.isEmpty) {
+    if (items.isEmpty) {
       return const _DesktopWidgetEmptyState(
-        label: 'Nessun follow-up imminente.\nTutti i deal sono in ordine.',
+        label:
+            'Nessun follow-up imminente.\nScadenze e attività sono in ordine.',
       );
     }
     return ListView.separated(
-      itemCount: deals.length.clamp(0, 8),
+      itemCount: items.length.clamp(0, 8),
       separatorBuilder: (_, __) => const SizedBox(height: 6),
       itemBuilder: (context, i) {
-        final deal = deals[i];
-        final company = deal.customerId != null
-            ? companies.where((c) => c.id == deal.customerId).firstOrNull
-            : null;
-        final daysLeft = deal.expectedClosingDate!
-            .difference(DateTime.now())
-            .inDays;
+        final item = items[i];
+        final company = companies
+            .where((c) => c.id == item.companyId)
+            .firstOrNull;
+        final daysLeft = item.dueAt.difference(DateTime.now()).inDays;
         final isOverdue = daysLeft < 0;
         final accent = isOverdue
             ? GussoniBrand.error
@@ -15091,7 +15616,7 @@ class _DesktopFollowUpWidget extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      deal.title,
+                      item.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
@@ -15100,16 +15625,15 @@ class _DesktopFollowUpWidget extends StatelessWidget {
                         fontWeight: FontWeight.w700,
                       ),
                     ),
-                    if (company != null)
-                      Text(
-                        company.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: GussoniBrand.textMuted,
-                          fontSize: 11,
-                        ),
+                    Text(
+                      '${item.kind} · ${company?.name ?? 'Nexora'}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: GussoniBrand.textMuted,
+                        fontSize: 11,
                       ),
+                    ),
                   ],
                 ),
               ),
@@ -16846,10 +17370,15 @@ class _BillingProfileSettingsCardState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Dati emittente fattura',
+                'Dati emittente e mittente email',
                 style: Theme.of(
                   context,
                 ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'La ragione sociale sarà il nome visualizzato dal cliente; l’email mittente sarà usata per preventivi e fatture.',
+                style: TextStyle(fontSize: 12, color: GussoniBrand.textMuted),
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -16866,7 +17395,7 @@ class _BillingProfileSettingsCardState
                   _formField(_regime, 'Regime fiscale (es RF01)', 180),
                   _formField(_reaOffice, 'REA ufficio', 120),
                   _formField(_reaNumber, 'REA numero', 150),
-                  _formField(_email, 'Email', 220),
+                  _formField(_email, 'Email mittente documenti', 240),
                   _formField(_pec, 'PEC', 220),
                   _formField(_phone, 'Telefono', 170),
                 ],

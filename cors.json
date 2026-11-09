@@ -1,8 +1,7 @@
 [
   {
     "origin": [
-      "https://business.gweb.agency",
-      "https://gussoni.sviluppo.host",
+      "https://nexora.sviluppo.host",
       "http://localhost:*",
       "https://localhost:*"
     ],

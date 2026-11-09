@@ -30,6 +30,7 @@ class _ArchiveManagerCardState extends State<ArchiveManagerCard> {
   final ArchiveService _service = ArchiveService();
   bool _loading = false;
   bool _dragging = false;
+  String? _loadError;
   String _currentPath = '';
   String _query = '';
   _ArchiveViewMode _viewMode = _ArchiveViewMode.list;
@@ -108,19 +109,36 @@ class _ArchiveManagerCardState extends State<ArchiveManagerCard> {
       setState(() {
         _folders = response.folders;
         _files = response.files;
+        _loadError = null;
       });
     } catch (error) {
       if (!mounted) {
         return;
       }
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Archivio: $error')));
+      setState(() => _loadError = _friendlyArchiveError(error));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(_loadError ?? 'Archivio non disponibile.')),
+      );
     } finally {
       if (mounted) {
         setState(() => _loading = false);
       }
     }
+  }
+
+  String _friendlyArchiveError(Object error) {
+    final raw = error.toString();
+    if (raw.contains('temporaneamente non raggiungibile') ||
+        raw.contains('TimeoutException')) {
+      return 'Archivio lento o non raggiungibile. Riprova tra qualche secondo.';
+    }
+    if (raw.contains('Risposta non JSON')) {
+      return 'Archivio: risposta server non valida. Riprova o controlla il PHP.';
+    }
+    return raw
+        .replaceFirst('Bad state: ', '')
+        .replaceFirst('StateError: ', '')
+        .replaceFirst('Exception: ', '');
   }
 
   Future<void> _createFolder() async {
@@ -557,12 +575,12 @@ class _ArchiveManagerCardState extends State<ArchiveManagerCard> {
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [
-            Colors.white.withValues(alpha: .70),
-            GussoniBrand.surfaceSubtle.withValues(alpha: .54),
+            GussoniBrand.glassSurfaceStrong.withValues(alpha: .82),
+            GussoniBrand.surfaceSubtle.withValues(alpha: .68),
           ],
         ),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: .70)),
+        border: Border.all(color: GussoniBrand.border.withValues(alpha: .88)),
       ),
       clipBehavior: Clip.antiAlias,
       child: Row(
@@ -607,8 +625,8 @@ class _ArchiveManagerCardState extends State<ArchiveManagerCard> {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            const Color(0xFFFCFAF7).withValues(alpha: .98),
-            const Color(0xFFF0E9E1).withValues(alpha: .92),
+            GussoniBrand.glassSurfaceStrong.withValues(alpha: .96),
+            GussoniBrand.surfaceSubtle.withValues(alpha: .92),
             GussoniBrand.primaryBg.withValues(alpha: .54),
           ],
         ),
@@ -634,7 +652,7 @@ class _ArchiveManagerCardState extends State<ArchiveManagerCard> {
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: mobile ? .58 : .64),
         border: Border(
-          bottom: BorderSide(color: Colors.black.withValues(alpha: .06)),
+          bottom: BorderSide(color: GussoniBrand.border.withValues(alpha: .92)),
         ),
       ),
       child: Column(
@@ -698,17 +716,17 @@ class _ArchiveManagerCardState extends State<ArchiveManagerCard> {
                     prefixIcon: const Icon(Icons.search_rounded, size: 18),
                     isDense: true,
                     filled: true,
-                    fillColor: Colors.white.withValues(alpha: .70),
+                    fillColor: GussoniBrand.glassSurface.withValues(alpha: .90),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: BorderSide(
-                        color: Colors.black.withValues(alpha: .06),
+                        color: GussoniBrand.border.withValues(alpha: .92),
                       ),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(16),
                       borderSide: BorderSide(
-                        color: Colors.black.withValues(alpha: .06),
+                        color: GussoniBrand.border.withValues(alpha: .92),
                       ),
                     ),
                   ),
@@ -754,22 +772,32 @@ class _ArchiveManagerCardState extends State<ArchiveManagerCard> {
         border: Border.all(
           color: _dragging
               ? GussoniBrand.primary
-              : Colors.white.withValues(alpha: mobile ? 0 : .60),
+              : GussoniBrand.border.withValues(alpha: mobile ? 0 : .84),
           width: _dragging ? 2 : 1,
         ),
         color: _dragging
             ? GussoniBrand.primaryBg
-            : Colors.white.withValues(alpha: mobile ? .18 : .34),
+            : GussoniBrand.glassSurface.withValues(alpha: mobile ? .24 : .54),
       ),
       child: _loading
           ? const Center(child: CircularProgressIndicator())
-          : entries.isEmpty
-          ? const Center(
-              child: Text(
-                'Cartella vuota. Trascina qui i file o usa "Carica file".',
-              ),
-            )
-          : _buildEntries(entries, mobile: mobile),
+          : Column(
+              children: [
+                if (_loadError != null)
+                  _ArchiveLoadErrorBanner(message: _loadError!, onRetry: _load),
+                Expanded(
+                  child: entries.isEmpty
+                      ? Center(
+                          child: Text(
+                            _loadError == null
+                                ? 'Cartella vuota. Trascina qui i file o usa "Carica file".'
+                                : 'Dati non disponibili al momento.',
+                          ),
+                        )
+                      : _buildEntries(entries, mobile: mobile),
+                ),
+              ],
+            ),
     );
 
     return DropTarget(
@@ -900,11 +928,9 @@ class _ArchiveManagerCardState extends State<ArchiveManagerCard> {
     if (!mounted) return;
     showDialog<void>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: .38),
-      builder: (ctx) => ArchiveFilePreviewDialog(
-        entry: entry,
-        urlFuture: urlFuture,
-      ),
+      barrierColor: GussoniBrand.glassDark.withValues(alpha: .42),
+      builder: (ctx) =>
+          ArchiveFilePreviewDialog(entry: entry, urlFuture: urlFuture),
     );
   }
 
@@ -1323,9 +1349,9 @@ class _ArchiveStatusBar extends StatelessWidget {
     height: 38,
     alignment: Alignment.center,
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .58),
+      color: GussoniBrand.glassSurfaceStrong.withValues(alpha: .72),
       border: Border(
-        top: BorderSide(color: Colors.black.withValues(alpha: .06)),
+        top: BorderSide(color: GussoniBrand.border.withValues(alpha: .92)),
       ),
     ),
     child: Text(
@@ -1347,9 +1373,9 @@ class _ArchiveListHeader extends StatelessWidget {
     height: 34,
     padding: const EdgeInsets.fromLTRB(24, 0, 56, 0),
     decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .36),
+      color: GussoniBrand.glassSurface.withValues(alpha: .52),
       border: Border(
-        bottom: BorderSide(color: Colors.black.withValues(alpha: .06)),
+        bottom: BorderSide(color: GussoniBrand.border.withValues(alpha: .92)),
       ),
     ),
     child: const Row(
@@ -1721,7 +1747,7 @@ class _ArchiveColumnPathItem extends StatelessWidget {
     padding: const EdgeInsets.only(bottom: 6),
     child: Material(
       color: selected
-          ? Colors.white.withValues(alpha: .70)
+          ? GussoniBrand.glassSurfaceStrong.withValues(alpha: .82)
           : Colors.transparent,
       borderRadius: BorderRadius.circular(12),
       child: InkWell(
@@ -2082,6 +2108,54 @@ class _ArchiveVisual extends StatelessWidget {
                 ),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ArchiveLoadErrorBanner extends StatelessWidget {
+  const _ArchiveLoadErrorBanner({required this.message, required this.onRetry});
+
+  final String message;
+  final VoidCallback onRetry;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: GussoniBrand.warningBg.withValues(alpha: .88),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: GussoniBrand.warningBorder),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.cloud_off_rounded,
+            size: 18,
+            color: GussoniBrand.warning,
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              message,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: GussoniBrand.textPrimary,
+              ),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onRetry,
+            icon: const Icon(Icons.refresh_rounded, size: 15),
+            label: const Text('Riprova'),
+          ),
         ],
       ),
     );

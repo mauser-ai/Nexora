@@ -122,6 +122,17 @@ class _SendEmailDialogState extends State<_SendEmailDialog> {
 
   Future<void> _send() async {
     if (_to.text.trim().isEmpty) return;
+    if ((widget.fromEmail ?? '').trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Configura l’email mittente in Impostazioni → Profilo prima di inviare.',
+          ),
+          backgroundColor: Color(0xFFEF4444),
+        ),
+      );
+      return;
+    }
     setState(() => _sending = true);
     try {
       var attachments = const <Map<String, String>>[];
@@ -255,6 +266,9 @@ class _SendEmailDialogState extends State<_SendEmailDialog> {
                 ),
                 const SizedBox(height: 12),
 
+                _senderPreview(),
+                const SizedBox(height: 12),
+
                 if (widget.buildPdfAttachment != null) ...[
                   CheckboxListTile(
                     value: _attachPdf,
@@ -363,6 +377,47 @@ class _SendEmailDialogState extends State<_SendEmailDialog> {
       ],
     ),
   );
+
+  Widget _senderPreview() {
+    final fromEmail = (widget.fromEmail ?? '').trim();
+    final fromName = (widget.fromName ?? '').trim();
+    final missing = fromEmail.isEmpty;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: missing ? const Color(0xFFFFF2F2) : const Color(0xFFF4FAF8),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: missing ? const Color(0xFFFCA5A5) : const Color(0xFFB8DDD2),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            missing ? Icons.error_outline_rounded : Icons.outgoing_mail,
+            size: 18,
+            color: missing ? const Color(0xFFDC2626) : const Color(0xFF2E7D4F),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              missing
+                  ? 'Mittente non configurato. Imposta l’email in Impostazioni → Profilo.'
+                  : 'Mittente: ${fromName.isEmpty ? fromEmail : '$fromName <$fromEmail>'}',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: missing
+                    ? const Color(0xFF991B1B)
+                    : const Color(0xFF1F5F4A),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _previewBody(String value) => Container(
     padding: const EdgeInsets.all(12),

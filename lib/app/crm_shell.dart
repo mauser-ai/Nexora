@@ -31,6 +31,8 @@ class CrmShellScaffold extends StatefulWidget {
     this.initialAppId,
     this.topBarTrailing,
     this.floatingChat,
+    this.brandLogoUrl,
+    this.brandLabel,
   });
 
   final List<DesktopShellApp> apps;
@@ -48,6 +50,8 @@ class CrmShellScaffold extends StatefulWidget {
 
   /// Widget flottante fisso in basso a destra (es. chatbot Nexora AI).
   final Widget? floatingChat;
+  final String? brandLogoUrl;
+  final String? brandLabel;
 
   @override
   State<CrmShellScaffold> createState() => _CrmShellScaffoldState();
@@ -74,7 +78,7 @@ const List<_NavSection> _navSections = [
   ]),
   _NavSection('Lavoro', ['projects', 'tasks', 'calendar', 'clock']),
   _NavSection('Comunicazione', ['threads', 'chat', 'memo']),
-  _NavSection('Gestione', ['archive', 'admin', 'settings']),
+  _NavSection('Gestione', ['pos', 'archive', 'admin', 'settings']),
 ];
 
 class _CrmShellScaffoldState extends State<CrmShellScaffold>
@@ -282,6 +286,8 @@ class _CrmShellScaffoldState extends State<CrmShellScaffold>
                 selectedId: _selectedId,
                 collapsed: collapsed,
                 hasDashboard: widget.dashboardWidgets.isNotEmpty,
+                brandLogoUrl: widget.brandLogoUrl,
+                brandLabel: widget.brandLabel,
                 onSelect: _selectPage,
               ),
               Expanded(
@@ -371,6 +377,8 @@ class _Sidebar extends StatelessWidget {
     required this.selectedId,
     required this.collapsed,
     required this.hasDashboard,
+    this.brandLogoUrl,
+    this.brandLabel,
     required this.onSelect,
   });
 
@@ -378,6 +386,8 @@ class _Sidebar extends StatelessWidget {
   final String selectedId;
   final bool collapsed;
   final bool hasDashboard;
+  final String? brandLogoUrl;
+  final String? brandLabel;
   final ValueChanged<String> onSelect;
 
   @override
@@ -388,6 +398,11 @@ class _Sidebar extends StatelessWidget {
     final extraApps = apps
         .where((app) => !sectionedIds.contains(app.id))
         .toList();
+    final logoUrl = brandLogoUrl?.trim();
+    final hasBrandLogo = logoUrl != null && logoUrl.isNotEmpty;
+    final fallbackLabel = (brandLabel?.trim().isNotEmpty ?? false)
+        ? brandLabel!.trim()
+        : 'Nexora';
 
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
@@ -409,46 +424,53 @@ class _Sidebar extends StatelessWidget {
                       height: 40,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(10),
-                        color: GussoniBrand.primary,
+                        color: Colors.transparent,
                       ),
-                      child: const Center(
-                        child: Text(
-                          'G',
-                          style: TextStyle(
-                            fontSize: 19,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
+                      child: hasBrandLogo
+                          ? ClipRRect(
+                              borderRadius: BorderRadius.circular(10),
+                              child: Image.network(
+                                logoUrl,
+                                key: ValueKey('collapsed-$logoUrl'),
+                                fit: BoxFit.contain,
+                                errorBuilder: (_, __, ___) => Image.asset(
+                                  'assets/branding/app_icon.png',
+                                  fit: BoxFit.contain,
+                                ),
+                              ),
+                            )
+                          : Image.asset(
+                              'assets/branding/app_icon.png',
+                              fit: BoxFit.contain,
+                            ),
                     ),
                   )
                 : Container(
-                    height: 58,
+                    height: 86,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 11,
+                      horizontal: 18,
+                      vertical: 16,
                     ),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
-                      color: GussoniBrand.primary,
+                      color: Colors.transparent,
                     ),
-                    child: Image.asset(
-                      GussoniBrand.logoWhitePath,
-                      fit: BoxFit.contain,
-                      alignment: Alignment.centerLeft,
-                      errorBuilder: (_, __, ___) => const Center(
-                        child: Text(
-                          'Gussoni Consulenze',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            letterSpacing: -.2,
+                    child: hasBrandLogo
+                        ? Image.network(
+                            logoUrl,
+                            key: ValueKey(logoUrl),
+                            fit: BoxFit.contain,
+                            alignment: Alignment.centerLeft,
+                            errorBuilder: (_, __, ___) =>
+                                _CrmSidebarBrandFallback(label: fallbackLabel),
+                          )
+                        : Image.asset(
+                            GussoniBrand.logoWhitePath,
+                            fit: BoxFit.contain,
+                            alignment: Alignment.centerLeft,
+                            errorBuilder: (_, __, ___) =>
+                                _CrmSidebarBrandFallback(label: fallbackLabel),
                           ),
-                        ),
-                      ),
-                    ),
                   ),
           ),
           const Divider(height: 1, color: GussoniBrand.borderSubtle),
@@ -510,6 +532,30 @@ class _Sidebar extends StatelessWidget {
     collapsed: collapsed,
     onTap: () => onSelect(app.id),
   );
+}
+
+class _CrmSidebarBrandFallback extends StatelessWidget {
+  const _CrmSidebarBrandFallback({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 15,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+          letterSpacing: -.2,
+        ),
+      ),
+    );
+  }
 }
 
 class _SidebarItem extends StatefulWidget {
@@ -1050,11 +1096,10 @@ class _AppPage extends StatelessWidget {
                   children: [
                     Text(
                       app.title,
-                      style: GoogleFonts.ebGaramond(
+                      style: GoogleFonts.montserrat(
                         fontSize: 24,
                         fontWeight: FontWeight.w600,
                         color: GussoniBrand.textPrimary,
-                        letterSpacing: -.2,
                         height: 1.05,
                       ),
                     ),
@@ -1126,11 +1171,10 @@ class CrmDashboardPage extends StatelessWidget {
             dy: 6,
             child: Text(
               '$_greeting, $name',
-              style: GoogleFonts.ebGaramond(
+              style: GoogleFonts.montserrat(
                 fontSize: 30,
                 fontWeight: FontWeight.w600,
                 color: GussoniBrand.textPrimary,
-                letterSpacing: -.2,
               ),
             ),
           ),

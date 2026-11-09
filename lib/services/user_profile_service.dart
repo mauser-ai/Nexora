@@ -1,21 +1,15 @@
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:http/http.dart' as http;
 
 import '../data/api_client.dart';
 
 /// Profili utente, preferenze, integrazioni e ruoli piattaforma.
 ///
-/// Dual-mode: preferisce l'API PHP/MySQL (`/api/app/...`, tabelle create da
-/// `install.php`); finché l'endpoint non è deployato usa Firestore come
-/// fallback (collection `users`). Su Firestore restano solo auth e push.
+/// MySQL-only: Firebase resta solo per Auth e notifiche push.
 class UserProfileService {
-  UserProfileService({FirebaseFirestore? firestore, ApiClient? api})
-    : _db = firestore ?? FirebaseFirestore.instance,
-      _api = api ?? ApiClient.instance;
+  UserProfileService({ApiClient? api}) : _api = api ?? ApiClient.instance;
 
-  final FirebaseFirestore _db;
   final ApiClient _api;
 
   /// Probe condiviso sull'app API (null = non verificato).
@@ -24,15 +18,32 @@ class UserProfileService {
   /// Ruolo dell'utente corrente (valorizzato dopo fetchProfile in API mode).
   static String currentRole = 'operatore';
 
-  Future<bool> apiAvailable() async {
+  static void resetApiProbe() {
+    _apiMode = null;
+  }
+
+  Future<bool> apiAvailable({bool forceRefresh = false}) async {
+    if (forceRefresh) {
+      _apiMode = null;
+    }
     if (_apiMode != null) return _apiMode!;
     try {
-      final raw = await _api.get('/app/profile.php');
-      _apiMode = raw is Map && raw['profile'] is Map;
+      final response = await http
+          .get(Uri.parse('${ApiClient.baseUrl}/app/profile.php?probe=1'))
+          .timeout(const Duration(seconds: 8));
+      _apiMode = response.statusCode == 200;
     } catch (_) {
       _apiMode = false;
     }
     return _apiMode!;
+  }
+
+  Future<void> _requireApi({bool forceRefresh = false}) async {
+    if (!await apiAvailable(forceRefresh: forceRefresh)) {
+      throw ApiException(
+        'API profilo MySQL non disponibile. Installa/carica /api/app/install.php e /api/app/profile.php.',
+      );
+    }
   }
 
   // ─── Profilo / preferenze ──────────────────────────────────────────────────
@@ -44,39 +55,43 @@ class UserProfileService {
     String uid, {
     String? email,
   }) async {
-    if (await apiAvailable()) {
-      final raw = await _api.get(
-        '/app/profile.php',
-        query: {if (email != null && email.isNotEmpty) 'email': email},
-      );
-      final profile = raw is Map ? raw['profile'] : null;
-      if (profile is Map) {
-        final map = Map<String, dynamic>.from(profile);
-        currentRole = (map['role'] as String?) ?? 'operatore';
-        return map;
-      }
-      return null;
+    await _requireApi();
+    final raw = await _api
+        .get(
+          '/app/profile.php',
+          query: {if (email != null && email.isNotEmpty) 'email': email},
+        )
+        .timeout(const Duration(seconds: 10));
+    final profile = raw is Map ? raw['profile'] : null;
+    if (profile is Map) {
+      final map = Map<String, dynamic>.from(profile);
+      currentRole = (map['role'] as String?) ?? 'operatore';
+      return map;
     }
-    final doc = await _db.collection('users').doc(uid).get();
-    return doc.data();
+    return null;
   }
 
   Future<void> updateProfile(String uid, Map<String, dynamic> fields) async {
-    if (await apiAvailable()) {
-      await _api.put('/app/profile.php', fields);
-      return;
-    }
-    await _db
-        .collection('users')
-        .doc(uid)
-        .set(fields, SetOptions(merge: true));
+    await _requireApi();
+    await _api
+        .put('/app/profile.php', fields)
+        .timeout(const Duration(seconds: 10));
   }
 
   // ─── Identità per il login (pre-auth) ──────────────────────────────────────
 
   /// Lookup nome/avatar da email per il prefill del login. Gira PRIMA
   /// dell'autenticazione: usa l'endpoint pubblico, fallback Firestore.
-  Future<({String displayName, String avatarUrl, String email})?>
+  Future<
+    ({
+      String displayName,
+      String avatarUrl,
+      String email,
+      String brandLogoUrl,
+      String brandColor,
+      bool brandingEnabled,
+    })?
+  >
   identityByEmail(String email) async {
     // Endpoint pubblico (senza JWT).
     try {
@@ -95,58 +110,33 @@ class UserProfileService {
             displayName: (data['displayName'] as String? ?? '').trim(),
             avatarUrl: (data['avatarUrl'] as String? ?? '').trim(),
             email: (data['email'] as String? ?? email).trim(),
+            brandLogoUrl: (data['brandLogoUrl'] as String? ?? '').trim(),
+            brandColor: (data['brandColor'] as String? ?? '').trim(),
+            brandingEnabled: data['brandingEnabled'] as bool? ?? false,
           );
         }
         if (data['found'] == false) return null;
       }
     } catch (_) {}
 
-    // Fallback Firestore (comportamento storico).
-    try {
-      final query = await _db
-          .collection('users')
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
-      if (query.docs.isEmpty) return null;
-      final doc = query.docs.first.data();
-      return (
-        displayName: (doc['displayName'] as String? ?? '').trim(),
-        avatarUrl: (doc['avatarUrl'] as String? ?? '').trim(),
-        email: (doc['email'] as String? ?? email).trim(),
-      );
-    } catch (_) {
-      return null;
-    }
+    return null;
   }
 
   // ─── Integrazioni ──────────────────────────────────────────────────────────
 
-  Future<Map<String, Map<String, dynamic>>> loadIntegrations(
-    String uid,
-  ) async {
-    if (await apiAvailable()) {
-      final raw = await _api.get('/app/integrations.php');
-      final map = raw is Map ? raw['integrations'] : null;
-      if (map is Map) {
-        return map.map(
-          (k, v) => MapEntry(
-            k.toString(),
-            v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{},
-          ),
-        );
-      }
-      return {};
+  Future<Map<String, Map<String, dynamic>>> loadIntegrations(String uid) async {
+    await _requireApi();
+    final raw = await _api.get('/app/integrations.php');
+    final map = raw is Map ? raw['integrations'] : null;
+    if (map is Map) {
+      return map.map(
+        (k, v) => MapEntry(
+          k.toString(),
+          v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{},
+        ),
+      );
     }
-    final doc = await _db.collection('users').doc(uid).get();
-    final raw = doc.data()?['integrations'];
-    if (raw is! Map) return {};
-    return raw.map(
-      (k, v) => MapEntry(
-        k.toString(),
-        v is Map ? Map<String, dynamic>.from(v) : <String, dynamic>{},
-      ),
-    );
+    return {};
   }
 
   Future<void> saveIntegration(
@@ -154,31 +144,19 @@ class UserProfileService {
     String key,
     Map<String, String> values,
   ) async {
-    if (await apiAvailable()) {
-      await _api.put('/app/integrations.php', {'key': key, 'data': values});
-      return;
-    }
-    await _db.collection('users').doc(uid).set({
-      'integrations': {
-        key: {...values, 'updatedAt': FieldValue.serverTimestamp()},
-      },
-    }, SetOptions(merge: true));
+    await _requireApi();
+    await _api.put('/app/integrations.php', {'key': key, 'data': values});
   }
 
   Future<void> removeIntegration(String uid, String key) async {
-    if (await apiAvailable()) {
-      await _api.delete('/app/integrations.php', query: {'key': key});
-      return;
-    }
-    await _db.collection('users').doc(uid).set({
-      'integrations': {key: FieldValue.delete()},
-    }, SetOptions(merge: true));
+    await _requireApi();
+    await _api.delete('/app/integrations.php', query: {'key': key});
   }
 
   // ─── Gestione utenti piattaforma (solo superadmin, solo API) ──────────────
 
   Future<List<Map<String, dynamic>>> listPlatformUsers() async {
-    if (!await apiAvailable()) return [];
+    await _requireApi();
     final raw = await _api.get('/app/users.php');
     final users = raw is Map ? raw['users'] : null;
     if (users is! List) return [];
@@ -189,6 +167,7 @@ class UserProfileService {
   }
 
   Future<void> setPlatformRole(String uid, String role) async {
+    await _requireApi();
     await _api.put('/app/users.php', {'uid': uid, 'role': role});
   }
 }

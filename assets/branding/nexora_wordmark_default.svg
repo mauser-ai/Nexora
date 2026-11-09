@@ -1,0 +1,20 @@
+<svg width="900" height="220" viewBox="0 0 900 220" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="nexora-accent" x1="56" y1="36" x2="170" y2="184" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ACCF78"/>
+      <stop offset="1" stop-color="#8FB85C"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <rect x="58" y="36" width="24" height="148" rx="12" fill="#02332A"/>
+    <rect x="170" y="36" width="24" height="148" rx="12" fill="#02332A"/>
+    <path d="M82 52C90 44 103 44 111 52L170 122L152 148L94 79C88 72 82 63 82 52Z" fill="url(#nexora-accent)"/>
+    <circle cx="207" cy="171" r="9" fill="#ACCF78"/>
+  </g>
+  <g fill="#02332A">
+    <path d="M274 159V60H298L383 132V60H414V159H389L305 87V159H274Z"/>
+    <path d="M455 159V60H592V88H488V101H583V127H488V131H595V159H455Z"/>
+    <path d="M619 159L671 60H706L758 159H721L711 139H665L655 159H619ZM678 113H698L688 92L678 113Z"/>
+    <path d="M782 159V60H844C867 60 885 65 898 76C911 87 918 102 918 120C918 138 911 152 898 163C885 174 867 179 844 179H782V159ZM815 131H842C851 131 859 129 865 124C871 119 874 112 874 103C874 94 871 87 865 82C859 77 851 75 842 75H815V131Z"/>
+  </g>
+</svg>

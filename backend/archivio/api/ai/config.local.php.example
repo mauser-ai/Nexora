@@ -1,0 +1,8 @@
+<?php
+declare(strict_types=1);
+
+return [
+    'anthropic_api_key' => 'INSERISCI_API_KEY_ANTHROPIC',
+    'model'             => 'claude-sonnet-4-6',
+    'max_tokens'        => 4096,
+];

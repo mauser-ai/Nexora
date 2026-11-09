@@ -5,9 +5,52 @@ import 'package:flutter/material.dart';
 import '../../brand_config.dart';
 import '../../data/api_workspace_repository.dart';
 import '../../data/team_repository.dart';
+import '../../models/custom_field_models.dart';
 import '../../models/domain_models.dart';
 import '../../services/archive_service.dart';
 import '../../app/nexora_dialog.dart';
+import '../../widgets/custom_fields_section.dart';
+
+Map<String, TextEditingController> _buildProjectCustomFieldControllers(
+  List<TeamCustomFieldDefinition> definitions,
+) {
+  final controllers = <String, TextEditingController>{};
+  for (final definition in definitions) {
+    if (definition.type == CustomFieldType.select) continue;
+    controllers[definition.id] = TextEditingController();
+  }
+  return controllers;
+}
+
+Map<String, String?> _buildProjectCustomFieldSelectValues(
+  List<TeamCustomFieldDefinition> definitions,
+) {
+  final values = <String, String?>{};
+  for (final definition in definitions) {
+    if (definition.type == CustomFieldType.select) {
+      values[definition.id] = null;
+    }
+  }
+  return values;
+}
+
+Map<String, dynamic> _collectProjectCustomFieldValues(
+  List<TeamCustomFieldDefinition> definitions,
+  Map<String, TextEditingController> controllers,
+  Map<String, String?> selectValues,
+) {
+  final values = <String, dynamic>{};
+  for (final definition in definitions) {
+    if (definition.type == CustomFieldType.select) {
+      final value = selectValues[definition.id]?.trim();
+      if (value != null && value.isNotEmpty) values[definition.id] = value;
+      continue;
+    }
+    final value = controllers[definition.id]?.text.trim() ?? '';
+    if (value.isNotEmpty) values[definition.id] = value;
+  }
+  return values;
+}
 
 class ProjectWizardDialog extends StatefulWidget {
   const ProjectWizardDialog({
@@ -23,6 +66,7 @@ class ProjectWizardDialog extends StatefulWidget {
     this.quotationId,
     this.companyName,
     this.templates = const [],
+    this.customFieldDefinitions = const [],
   });
 
   final String projectName;
@@ -36,6 +80,7 @@ class ProjectWizardDialog extends StatefulWidget {
   final List<TeamMember> teamMembers;
   final void Function(String projectId) onCreated;
   final List<ProjectTemplate> templates;
+  final List<TeamCustomFieldDefinition> customFieldDefinitions;
 
   @override
   State<ProjectWizardDialog> createState() => _ProjectWizardDialogState();
@@ -45,20 +90,48 @@ class _ProjectWizardDialogState extends State<ProjectWizardDialog> {
   final _archiveService = ArchiveService();
   bool _saving = false;
   String? _selectedTemplateId;
+  late final Map<String, TextEditingController> _customFieldControllers;
+  late final Map<String, String?> _customFieldSelectValues;
 
   List<ProjectTemplate> get _templates {
     final customs = widget.templates
-        .where((t) => t.id != kStandardProjectTemplate.id)
+        .where(
+          (t) => t.id != kStandardProjectTemplate.id && t.isDefault != true,
+        )
         .toList();
-    return [kStandardProjectTemplate, ...customs];
+    return customs;
   }
 
   ProjectTemplate? get _selectedTemplate =>
       _templates.where((t) => t.id == _selectedTemplateId).firstOrNull;
 
+  @override
+  void initState() {
+    super.initState();
+    _customFieldControllers = _buildProjectCustomFieldControllers(
+      widget.customFieldDefinitions,
+    );
+    _customFieldSelectValues = _buildProjectCustomFieldSelectValues(
+      widget.customFieldDefinitions,
+    );
+  }
+
+  @override
+  void dispose() {
+    for (final controller in _customFieldControllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
   Future<void> _createProject() async {
     setState(() => _saving = true);
     final projectId = 'prj-${DateTime.now().microsecondsSinceEpoch}';
+    final customFields = _collectProjectCustomFieldValues(
+      widget.customFieldDefinitions,
+      _customFieldControllers,
+      _customFieldSelectValues,
+    );
     try {
       if (_selectedTemplate == null) {
         await widget.repository.createProject(
@@ -72,6 +145,7 @@ class _ProjectWizardDialogState extends State<ProjectWizardDialog> {
             type: widget.projectType,
             opportunityId: widget.opportunityId,
             quotationId: widget.quotationId,
+            customFields: customFields,
           ),
         );
       } else {
@@ -84,6 +158,7 @@ class _ProjectWizardDialogState extends State<ProjectWizardDialog> {
           type: widget.projectType,
           opportunityId: widget.opportunityId,
           quotationId: widget.quotationId,
+          customFields: customFields,
         );
       }
 
@@ -143,10 +218,7 @@ class _ProjectWizardDialogState extends State<ProjectWizardDialog> {
               padding: const EdgeInsets.fromLTRB(24, 20, 16, 16),
               child: Row(
                 children: [
-                  Icon(
-                    Icons.folder_open_outlined,
-                    color: GussoniBrand.primary,
-                  ),
+                  Icon(Icons.folder_open_outlined, color: GussoniBrand.primary),
                   const SizedBox(width: 10),
                   Expanded(
                     child: Column(
@@ -213,33 +285,52 @@ class _ProjectWizardDialogState extends State<ProjectWizardDialog> {
                           : () => setState(() => _selectedTemplateId = null),
                     ),
                     const SizedBox(height: 12),
-                    const Text(
-                      'Template progetto',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: GussoniBrand.textMuted,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    ..._templates.map(
-                      (template) => Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _CreationChoiceCard(
-                          title: template.name,
-                          subtitle:
-                              '${template.phases.length} fasi · ${template.phases.fold<int>(0, (sum, phase) => sum + phase.tasks.length)} task',
-                          selected: _selectedTemplateId == template.id,
-                          icon: Icons.account_tree_outlined,
-                          badge: template.isDefault ? 'Standard' : 'Template',
-                          onTap: _saving
-                              ? null
-                              : () => setState(
-                                  () => _selectedTemplateId = template.id,
-                                ),
+                    if (_templates.isNotEmpty) ...[
+                      const Text(
+                        'Template progetto',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: GussoniBrand.textMuted,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 12),
+                      ..._templates.map(
+                        (template) => Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _CreationChoiceCard(
+                            title: template.name,
+                            subtitle:
+                                '${template.phases.length} fasi · ${template.phases.fold<int>(0, (sum, phase) => sum + phase.tasks.length)} task',
+                            selected: _selectedTemplateId == template.id,
+                            icon: Icons.account_tree_outlined,
+                            badge: 'Template',
+                            onTap: _saving
+                                ? null
+                                : () => setState(
+                                    () => _selectedTemplateId = template.id,
+                                  ),
+                          ),
+                        ),
+                      ),
+                    ] else ...[
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: GussoniBrand.surface,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: GussoniBrand.border),
+                        ),
+                        child: const Text(
+                          'Questo team non ha ancora template progetto. Puoi creare il progetto vuoto e strutturarlo dopo.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: GussoniBrand.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 18),
                     Container(
                       width: double.infinity,
@@ -314,6 +405,17 @@ class _ProjectWizardDialogState extends State<ProjectWizardDialog> {
                         ],
                       ),
                     ),
+                    if (widget.customFieldDefinitions.isNotEmpty) ...[
+                      const SizedBox(height: 18),
+                      CustomFieldsSection(
+                        definitions: widget.customFieldDefinitions,
+                        controllers: _customFieldControllers,
+                        selectValues: _customFieldSelectValues,
+                        onSelectChanged: (fieldId, value) => setState(
+                          () => _customFieldSelectValues[fieldId] = value,
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

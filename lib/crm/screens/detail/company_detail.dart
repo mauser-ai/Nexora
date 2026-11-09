@@ -174,18 +174,22 @@ class _CompanyDetailPageState extends State<CompanyDetailPage> {
                         children: [
                           Text(
                             _company.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFFE4E8FF),
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                              color: GussoniBrand.textPrimary,
+                              height: 1.1,
                             ),
                           ),
+                          const SizedBox(height: 4),
                           if (_company.vatNumber.isNotEmpty)
                             Text(
                               _company.vatNumber,
                               style: const TextStyle(
                                 fontSize: 13,
-                                color: Color(0xFF7D89A8),
+                                color: GussoniBrand.textMuted,
                               ),
                             ),
                         ],
@@ -605,25 +609,10 @@ class _CompanyDetailHero extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            GussoniBrand.glassSurfaceStrong.withValues(alpha: .92),
-            GussoniBrand.glassSurfaceMuted.withValues(alpha: .76),
-            color.withValues(alpha: .12),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: .72)),
-        boxShadow: [
-          BoxShadow(
-            color: color.withValues(alpha: .16),
-            blurRadius: 34,
-            offset: const Offset(0, 18),
-          ),
-        ],
+      decoration: GussoniBrand.glassPanel(
+        radius: 24,
+        accent: GussoniBrand.surface,
+        opacity: .96,
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -668,35 +657,59 @@ class _CompanyDetailHero extends StatelessWidget {
             ],
           );
 
-          final metrics = Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              _HeroMetric(
-                label: 'Contatti',
-                value: '$contacts',
-                icon: Icons.people_alt_rounded,
-                color: const Color(0xFF68A6FF),
-              ),
-              _HeroMetric(
-                label: 'Aperti',
-                value: '$openItems',
-                icon: Icons.bolt_rounded,
-                color: const Color(0xFFFF8A5B),
-              ),
-              _HeroMetric(
-                label: 'Progetti',
-                value: '$projects',
-                icon: Icons.folder_open_rounded,
-                color: GussoniBrand.primary,
-              ),
-              _HeroMetric(
-                label: 'Ricavi medi',
-                value: revenue == null ? '—' : currencyFormat.format(revenue),
-                icon: Icons.query_stats_rounded,
-                color: const Color(0xFFF06E9C),
-              ),
-            ],
+          final metricItems = [
+            _HeroMetric(
+              label: 'Contatti',
+              value: '$contacts',
+              icon: Icons.people_alt_rounded,
+              color: const Color(0xFF68A6FF),
+            ),
+            _HeroMetric(
+              label: 'Aperti',
+              value: '$openItems',
+              icon: Icons.bolt_rounded,
+              color: const Color(0xFFFF8A5B),
+            ),
+            _HeroMetric(
+              label: 'Progetti',
+              value: '$projects',
+              icon: Icons.folder_open_rounded,
+              color: GussoniBrand.primary,
+            ),
+            _HeroMetric(
+              label: 'Ricavi medi',
+              value: revenue == null ? '—' : currencyFormat.format(revenue),
+              icon: Icons.query_stats_rounded,
+              color: const Color(0xFFF06E9C),
+            ),
+          ];
+
+          final metrics = LayoutBuilder(
+            builder: (context, metricsConstraints) {
+              final compactMetrics = metricsConstraints.maxWidth < 620;
+              if (compactMetrics) {
+                final width = ((metricsConstraints.maxWidth - 12) / 2).clamp(
+                  168.0,
+                  double.infinity,
+                );
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: metricItems
+                      .map((item) => SizedBox(width: width, child: item))
+                      .toList(),
+                );
+              }
+
+              return Row(
+                children: [
+                  for (var i = 0; i < metricItems.length; i++) ...[
+                    Expanded(child: metricItems[i]),
+                    if (i != metricItems.length - 1) const SizedBox(width: 12),
+                  ],
+                ],
+              );
+            },
           );
 
           if (compact) {
@@ -742,36 +755,39 @@ class _HeroMetric extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    width: 132,
-    padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .54),
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: Colors.white.withValues(alpha: .74)),
-    ),
+    constraints: const BoxConstraints(minHeight: 116),
+    padding: const EdgeInsets.fromLTRB(16, 16, 16, 14),
+    decoration: GussoniBrand.glassField(radius: 18),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Icon(icon, size: 18, color: color),
-        const SizedBox(height: 9),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: GussoniBrand.textPrimary,
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11,
-            color: GussoniBrand.textMuted,
-            fontWeight: FontWeight.w700,
-          ),
+        Icon(icon, size: 20, color: color),
+        const SizedBox(height: 14),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: GussoniBrand.textPrimary,
+                height: 1,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                color: GussoniBrand.textMuted,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
         ),
       ],
     ),

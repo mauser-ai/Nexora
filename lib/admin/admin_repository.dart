@@ -1,23 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
 
+import '../data/api_client.dart';
 import '../data/team_repository.dart';
+import '../models/configuration_package_models.dart';
 import '../models/domain_models.dart';
 import '../models/subscription_models.dart';
-
-// ────────────────────────────────────────────────
-// ID dell'unico utente con accesso admin
-// ────────────────────────────────────────────────
-const kAdminUid = 'XTsWw4FJeic7AzmCIg1YoNTT9I73';
-
-// ────────────────────────────────────────────────
-// AdminTeam – snapshot di un team con tutti i dettagli
-// ────────────────────────────────────────────────
 
 class AdminTeam {
   const AdminTeam({
@@ -29,6 +20,8 @@ class AdminTeam {
     required this.createdAt,
     this.billingProfile,
     this.subscription,
+    this.enabledModules = const [],
+    this.appliedPackageIds = const [],
   });
 
   final String id;
@@ -39,8 +32,11 @@ class AdminTeam {
   final DateTime createdAt;
   final BillingProfile? billingProfile;
   final TeamSubscription? subscription;
+  final List<String> enabledModules;
+  final List<String> appliedPackageIds;
 
-  TeamMember? get owner => members.where((m) => m.userId == ownerId).firstOrNull;
+  TeamMember? get owner =>
+      members.where((m) => m.userId == ownerId).firstOrNull;
 
   int get activeLicenses => members.where((m) => m.status == 'active').length;
 
@@ -57,72 +53,120 @@ class AdminTeam {
     if (plan.isUnlimited) return true;
     return activeLicenses < plan.maxUsers;
   }
+
+  factory AdminTeam.fromJson(Map<dynamic, dynamic> map) {
+    final members = (map['members'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map(
+          (m) => TeamMember(
+            userId: (m['userId'] ?? '').toString(),
+            email: (m['email'] ?? '').toString(),
+            displayName: (m['displayName'] ?? '').toString(),
+            role: (m['role'] ?? '').toString(),
+            status: (m['status'] ?? 'active').toString(),
+            joinedAt: DateTime.tryParse((m['joinedAt'] ?? '').toString()),
+          ),
+        )
+        .toList();
+    return AdminTeam(
+      id: (map['id'] ?? '').toString(),
+      name: (map['name'] ?? '').toString(),
+      ownerId: (map['ownerId'] ?? '').toString(),
+      members: members,
+      memberCount: (map['memberCount'] as num?)?.toInt() ?? members.length,
+      createdAt:
+          DateTime.tryParse((map['createdAt'] ?? '').toString()) ??
+          DateTime.now(),
+      billingProfile: map['billingProfile'] is Map
+          ? BillingProfile.fromMap(
+              Map<String, dynamic>.from(map['billingProfile'] as Map),
+            )
+          : null,
+      subscription: TeamSubscription.fromMap(
+        map['subscription'] is Map
+            ? Map<String, dynamic>.from(map['subscription'] as Map)
+            : null,
+      ),
+      enabledModules: ((map['enabledModules'] as List?) ?? const [])
+          .map((module) => module.toString())
+          .where(TeamExtraModule.all.contains)
+          .toList(),
+      appliedPackageIds: ((map['appliedPackageIds'] as List?) ?? const [])
+          .map((value) => value.toString().trim())
+          .where((value) => value.isNotEmpty)
+          .toList(),
+    );
+  }
 }
 
-// ────────────────────────────────────────────────
-// AdminRepository
-// Lettura/scrittura di tutti i team e utenti.
-// Solo kAdminUid può usare queste API.
-// ────────────────────────────────────────────────
-
 class AdminRepository {
-  AdminRepository({FirebaseFirestore? firestore})
-      : _db = firestore ?? FirebaseFirestore.instance;
+  AdminRepository({ApiClient? api}) : _api = api ?? ApiClient.instance;
 
-  final FirebaseFirestore _db;
-
-  // ── Watch all teams ──
+  final ApiClient _api;
 
   Stream<List<AdminTeam>> watchAllTeams() {
-    return _db.collection('teams').snapshots().asyncMap((snap) async {
-      final teams = <AdminTeam>[];
-      for (final doc in snap.docs) {
-        final data = doc.data();
-        final membersSnap = await _db
-            .collection('teams')
-            .doc(doc.id)
-            .collection('members')
-            .get();
-        final members = membersSnap.docs
-            .map((d) => TeamMember.fromMap(d.id, d.data()))
-            .toList();
+    final controller = StreamController<List<AdminTeam>>.broadcast();
+    Timer? timer;
 
-        final billingData = data['billingProfile'] as Map<String, dynamic>?;
-        final billing = billingData != null ? BillingProfile.fromMap(billingData) : null;
-        final subData = data['subscription'] as Map<String, dynamic>?;
-        final subscription = TeamSubscription.fromMap(subData);
-
-        teams.add(AdminTeam(
-          id: doc.id,
-          name: data['name'] as String? ?? '—',
-          ownerId: data['ownerId'] as String? ?? '',
-          members: members,
-          memberCount: members.length,
-          createdAt: data['createdAt'] is Timestamp
-              ? (data['createdAt'] as Timestamp).toDate()
-              : DateTime.now(),
-          billingProfile: billing,
-          subscription: subscription,
-        ));
+    Future<void> refresh() async {
+      try {
+        controller.add(await _fetchTeams());
+      } catch (e) {
+        controller.addError(e);
       }
-      teams.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return teams;
-    });
-  }
+    }
 
-  // ── Watch all users (che hanno un profilo in users/) ──
+    unawaited(refresh());
+    timer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (controller.hasListener) unawaited(refresh());
+    });
+    controller.onCancel = () => timer?.cancel();
+    return controller.stream;
+  }
 
   Stream<List<Map<String, dynamic>>> watchAllUsers() {
-    return _db.collection('users').snapshots().map((snap) => snap.docs
-        .map((d) => {'uid': d.id, ...d.data()})
-        .toList()
-      ..sort((a, b) => (a['displayName'] as String? ?? '').compareTo(b['displayName'] as String? ?? '')));
+    final controller = StreamController<List<Map<String, dynamic>>>.broadcast();
+    Timer? timer;
+
+    Future<void> refresh() async {
+      try {
+        controller.add(await _fetchUsers());
+      } catch (e) {
+        controller.addError(e);
+      }
+    }
+
+    unawaited(refresh());
+    timer = Timer.periodic(const Duration(seconds: 20), (_) {
+      if (controller.hasListener) unawaited(refresh());
+    });
+    controller.onCancel = () => timer?.cancel();
+    return controller.stream;
   }
 
-  // ── Create Firebase Auth user via REST API ──
-  // Non usa secondary Firebase app (non funziona su web).
-  // Usa direttamente l'endpoint identitytoolkit per creare utenti
-  // senza interferire con la sessione auth corrente.
+  Future<List<AdminTeam>> _fetchTeams() async {
+    final raw = await _api.get('/app/admin_teams.php');
+    final teams = (raw is Map ? raw['teams'] : null) as List? ?? const [];
+    return teams
+        .whereType<Map>()
+        .map((team) => AdminTeam.fromJson(team))
+        .toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchUsers() async {
+    final raw = await _api.get('/app/users.php');
+    final users = (raw is Map ? raw['users'] : null) as List? ?? const [];
+    return users.whereType<Map>().map((u) {
+      final map = Map<String, dynamic>.from(u);
+      map['teamId'] = map['teamId'] ?? '';
+      return map;
+    }).toList()..sort(
+      (a, b) => (a['displayName'] as String? ?? '').compareTo(
+        b['displayName'] as String? ?? '',
+      ),
+    );
+  }
 
   Future<String?> _createAuthUser({
     required String email,
@@ -144,28 +188,18 @@ class AdminRepository {
     );
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
-
     if (response.statusCode == 200) {
-      return body['localId'] as String?; // UID del nuovo utente
+      return body['localId'] as String?;
     }
 
     final errorCode = (body['error'] as Map?)?['message'] as String? ?? '';
-
     if (errorCode.contains('EMAIL_EXISTS')) {
-      // Utente già esistente — cerca il suo UID su Firestore
-      final q = await _db
-          .collection('users')
-          .where('email', isEqualTo: email)
-          .limit(1)
-          .get();
-      if (q.docs.isNotEmpty) return q.docs.first.id;
-      return null; // Email esiste in Auth ma non ha profilo Firestore
+      throw Exception(
+        'Email già presente in Firebase Auth. Per collegarla serve conoscere il suo UID oppure ricrearla da Firebase Console.',
+      );
     }
-
-    throw Exception('Errore creazione account: $errorCode');
+    throw Exception('Errore creazione account Firebase: $errorCode');
   }
-
-  // ── Create a new team ──
 
   Future<String> createTeam({
     required String name,
@@ -174,40 +208,26 @@ class AdminRepository {
     required String ownerRole,
     required String ownerPassword,
   }) async {
-    // 1. Crea utente Firebase Auth via REST (no secondary app — funziona su web)
-    final newUid = await _createAuthUser(email: ownerEmail, password: ownerPassword);
-    if (newUid == null) throw Exception('Impossibile creare account Firebase per $ownerEmail');
+    final newUid = await _createAuthUser(
+      email: ownerEmail,
+      password: ownerPassword,
+    );
+    if (newUid == null || newUid.isEmpty) {
+      throw Exception('Impossibile creare account Firebase per $ownerEmail');
+    }
 
-    // 2. Create team in Firestore
-    final teamId = 'team-${newUid.substring(0, 8)}';
-    final now = DateTime.now();
-    final batch = _db.batch();
-
-    batch.set(_db.collection('teams').doc(teamId), {
-      'name': name,
-      'ownerId': newUid,
-      'createdAt': Timestamp.fromDate(now),
+    final raw = await _api.post('/app/admin_teams.php', {
+      'action': 'createTeam',
+      'teamName': name,
+      'owner': {
+        'userId': newUid,
+        'email': ownerEmail,
+        'displayName': ownerDisplayName,
+        'role': ownerRole,
+      },
     });
-    batch.set(_db.collection('teams').doc(teamId).collection('members').doc(newUid), {
-      'userId': newUid,
-      'email': ownerEmail,
-      'displayName': ownerDisplayName,
-      'role': ownerRole,
-      'status': 'active',
-      'joinedAt': Timestamp.fromDate(now),
-    });
-    batch.set(_db.collection('users').doc(newUid), {
-      'teamId': teamId,
-      'displayName': ownerDisplayName,
-      'role': ownerRole,
-      'email': ownerEmail,
-    }, SetOptions(merge: true));
-
-    await batch.commit();
-    return teamId;
+    return ((raw is Map ? raw['teamId'] : null) ?? '').toString();
   }
-
-  // ── Add member to existing team ──
 
   Future<void> addMemberToTeam({
     required String teamId,
@@ -216,105 +236,141 @@ class AdminRepository {
     required String role,
     required String password,
   }) async {
-    // Crea utente via REST (no secondary app)
     final newUid = await _createAuthUser(email: email, password: password);
-    if (newUid == null) throw Exception('Impossibile creare/trovare account per $email');
-
-    final batch = _db.batch();
-    batch.set(_db.collection('teams').doc(teamId).collection('members').doc(newUid), {
-      'userId': newUid, 'email': email, 'displayName': displayName, 'role': role,
-      'status': 'active', 'joinedAt': Timestamp.fromDate(DateTime.now()),
-    });
-    batch.set(_db.collection('users').doc(newUid), {
-      'teamId': teamId, 'displayName': displayName, 'role': role, 'email': email,
-    }, SetOptions(merge: true));
-    await batch.commit();
-  }
-
-  // ── Remove member from team ──
-
-  Future<void> removeMember({required String teamId, required String userId}) async {
-    final batch = _db.batch();
-    batch.delete(_db.collection('teams').doc(teamId).collection('members').doc(userId));
-    batch.update(_db.collection('users').doc(userId), {'teamId': FieldValue.delete()});
-    await batch.commit();
-  }
-
-  // ── Delete team ──
-
-  Future<void> deleteTeam(String teamId) async {
-    // Remove teamId from all members
-    final members = await _db.collection('teams').doc(teamId).collection('members').get();
-    final batch = _db.batch();
-    for (final m in members.docs) {
-      batch.delete(m.reference);
-      batch.update(_db.collection('users').doc(m.id), {'teamId': FieldValue.delete()});
+    if (newUid == null || newUid.isEmpty) {
+      throw Exception('Impossibile creare account Firebase per $email');
     }
-    batch.delete(_db.collection('teams').doc(teamId));
-    await batch.commit();
+
+    await _api.post('/app/admin_teams.php', {
+      'action': 'addMember',
+      'teamId': teamId,
+      'member': {
+        'userId': newUid,
+        'email': email,
+        'displayName': displayName,
+        'role': role,
+        'status': 'active',
+      },
+    });
   }
 
-  // ── Update team name ──
-
-  Future<void> updateTeamName(String teamId, String name) =>
-      _db.collection('teams').doc(teamId).update({'name': name});
-
-  // ── Update team billing profile ──
-
-  Future<void> updateTeamBilling(String teamId, BillingProfile profile) =>
-      _db.collection('teams').doc(teamId).update({'billingProfile': profile.toMap()});
-
-  Future<void> updateTeamSubscription(String teamId, TeamSubscription sub) =>
-      _db.collection('teams').doc(teamId).set(
-        {'subscription': sub.toMap()}, SetOptions(merge: true));
-
-  Future<TeamSubscription> getTeamSubscription(String teamId) async {
-    final doc = await _db.collection('teams').doc(teamId).get();
-    return TeamSubscription.fromMap(
-      doc.data()?['subscription'] as Map<String, dynamic>?,
+  Future<void> removeMember({
+    required String teamId,
+    required String userId,
+  }) async {
+    await _api.delete(
+      '/app/admin_teams.php',
+      query: {'teamId': teamId, 'member': userId},
     );
   }
 
-  // ── Get team billing (for team members in CRM) ──
-
-  Future<BillingProfile?> getTeamBilling(String teamId) async {
-    final doc = await _db.collection('teams').doc(teamId).get();
-    final data = doc.data()?['billingProfile'] as Map<String, dynamic>?;
-    return data != null ? BillingProfile.fromMap(data) : null;
+  Future<void> deleteTeam(String teamId) async {
+    await _api.delete('/app/admin_teams.php', query: {'teamId': teamId});
   }
 
-  Stream<BillingProfile> watchTeamBilling(String teamId) {
-    return _db.collection('teams').doc(teamId).snapshots().map((doc) {
-      final data = doc.data()?['billingProfile'] as Map<String, dynamic>?;
-      return BillingProfile.fromMap(data);
+  Future<void> updateTeamName(String teamId, String name) async {
+    await _api.put('/app/admin_teams.php', {'teamId': teamId, 'name': name});
+  }
+
+  Future<void> updateTeamBilling(String teamId, BillingProfile profile) async {
+    await _api.put('/app/admin_teams.php', {
+      'teamId': teamId,
+      'billingProfile': profile.toMap(),
     });
   }
 
-  // ── User activity summary ──
+  Future<void> updateTeamSubscription(
+    String teamId,
+    TeamSubscription sub,
+  ) async {
+    await _api.put('/app/admin_teams.php', {
+      'teamId': teamId,
+      'subscription': sub.toMap(),
+    });
+  }
+
+  Future<void> updateTeamModules(
+    String teamId,
+    List<String> enabledModules,
+  ) async {
+    await _api.put('/app/admin_teams.php', {
+      'teamId': teamId,
+      'enabledModules': enabledModules
+          .where(TeamExtraModule.all.contains)
+          .toSet()
+          .toList(),
+    });
+  }
+
+  Future<List<ConfigurationPackage>> listConfigurationPackages() async {
+    final raw = await _api.get(
+      '/app/admin_teams.php',
+      query: {'packages': '1'},
+    );
+    final items = (raw is Map ? raw['packages'] : null) as List? ?? const [];
+    return items
+        .whereType<Map>()
+        .map((item) => ConfigurationPackage.fromMap(item))
+        .toList();
+  }
+
+  Future<void> applyConfigurationPackages(
+    String teamId,
+    List<String> packageIds,
+  ) async {
+    await _api.put('/app/admin_teams.php', {
+      'teamId': teamId,
+      'appliedPackageIds': packageIds,
+    });
+  }
+
+  Future<void> saveConfigurationPackage(ConfigurationPackage package) async {
+    await _api.post('/app/admin_teams.php', {
+      'action': 'savePackage',
+      'package': package.toMap(),
+    });
+  }
+
+  Future<void> deleteConfigurationPackage(String packageId) async {
+    await _api.post('/app/admin_teams.php', {
+      'action': 'deletePackage',
+      'packageId': packageId,
+    });
+  }
+
+  Future<TeamSubscription> getTeamSubscription(String teamId) async {
+    final raw = await _api.get('/app/admin_teams.php', query: {'id': teamId});
+    final team = raw is Map ? raw['team'] : null;
+    if (team is! Map) return TeamSubscription.fromMap(null);
+    return TeamSubscription.fromMap(
+      team['subscription'] is Map
+          ? Map<String, dynamic>.from(team['subscription'] as Map)
+          : null,
+    );
+  }
+
+  Future<BillingProfile?> getTeamBilling(String teamId) async {
+    final raw = await _api.get('/app/admin_teams.php', query: {'id': teamId});
+    final team = raw is Map ? raw['team'] : null;
+    if (team is! Map || team['billingProfile'] is! Map) return null;
+    return BillingProfile.fromMap(
+      Map<String, dynamic>.from(team['billingProfile'] as Map),
+    );
+  }
+
+  Stream<BillingProfile> watchTeamBilling(String teamId) {
+    return Stream.periodic(const Duration(seconds: 20))
+        .asyncMap((_) => getTeamBilling(teamId))
+        .map((profile) => profile ?? BillingProfile.empty);
+  }
 
   Future<Map<String, dynamic>> getUserActivity(String userId) async {
-    final timeTracks = await _db.collection('users').doc(userId).collection('timeTracks').get();
-    final tasks = await _db.collection('users').doc(userId).collection('tasks').get();
-    final invoices = await _db.collection('users').doc(userId).collection('invoices').get();
-
-    double totalHours = 0;
-    for (final doc in timeTracks.docs) {
-      final data = doc.data();
-      final start = data['startAt'];
-      final end = data['endAt'];
-      if (start is Timestamp && end is Timestamp) {
-        totalHours += end.toDate().difference(start.toDate()).inMinutes / 60;
-      }
-    }
-
-    return {
-      'timeTracksCount': timeTracks.size,
-      'totalHours': totalHours,
-      'tasksCount': tasks.size,
-      'invoicesCount': invoices.size,
-      'lastActivity': timeTracks.docs.isNotEmpty
-          ? (timeTracks.docs.last.data()['startAt'] as Timestamp?)?.toDate()
-          : null,
-    };
+    final raw = await _api.get(
+      '/app/admin_teams.php',
+      query: {'activityUserId': userId},
+    );
+    return raw is Map
+        ? Map<String, dynamic>.from(raw['activity'] as Map? ?? const {})
+        : const {};
   }
 }

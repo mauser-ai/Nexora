@@ -4,8 +4,10 @@ import 'package:intl/intl.dart';
 import '../../app/nexora_dialog.dart';
 import '../../brand_config.dart';
 import '../../data/api_workspace_repository.dart';
-import '../../models/domain_models.dart';
 import '../../data/team_repository.dart';
+import '../../models/custom_field_models.dart';
+import '../../models/domain_models.dart';
+import '../../widgets/custom_fields_section.dart';
 import '../widgets/g_table.dart';
 
 // ──────────────────────────────────────────────────────────────
@@ -183,6 +185,7 @@ class _OpportunitaGussoniScreenState extends State<OpportunitaGussoniScreen> {
             userId: widget.userId,
             repository: widget.repository,
             companies: widget.workspace.companies,
+            teamInfo: widget.teamInfo,
             onCreated: (_) {},
             showCreateButton: widget.showCreateButton,
             onSearch: (v) => setState(() => _search = v),
@@ -413,22 +416,14 @@ class _OpportunityOverview extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(14),
     decoration: BoxDecoration(
-      gradient: LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [
-          GussoniBrand.glassSurfaceStrong.withValues(alpha: .88),
-          GussoniBrand.glassSurfaceMuted.withValues(alpha: .70),
-          GussoniBrand.warning.withValues(alpha: .08),
-        ],
-      ),
+      color: GussoniBrand.surface,
       borderRadius: BorderRadius.circular(22),
-      border: Border.all(color: Colors.white.withValues(alpha: .72)),
+      border: Border.all(color: GussoniBrand.border),
       boxShadow: const [
         BoxShadow(
-          color: Color(0x10000000),
-          blurRadius: 24,
-          offset: Offset(0, 12),
+          color: Color(0x1002332A),
+          blurRadius: 18,
+          offset: Offset(0, 8),
         ),
       ],
     ),
@@ -490,11 +485,7 @@ class _OpportunityMetric extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(12),
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: .46),
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: Colors.white.withValues(alpha: .68)),
-    ),
+    decoration: GussoniBrand.glassField(radius: 18),
     child: Row(
       children: [
         Container(
@@ -547,6 +538,7 @@ class _Header extends StatelessWidget {
     required this.userId,
     required this.repository,
     required this.companies,
+    required this.teamInfo,
     required this.onCreated,
     required this.onSearch,
     this.showCreateButton = true,
@@ -554,6 +546,7 @@ class _Header extends StatelessWidget {
   final String userId;
   final ApiWorkspaceRepository repository;
   final List<Company> companies;
+  final TeamInfo? teamInfo;
   final void Function(String id) onCreated;
   final void Function(String) onSearch;
   final bool showCreateButton;
@@ -621,6 +614,9 @@ class _Header extends StatelessWidget {
         userId: userId,
         repository: repository,
         companies: companies,
+        customFieldDefinitions:
+            this.teamInfo?.fieldsForModule(CustomFieldModule.opportunities) ??
+            const [],
       ),
     );
   }
@@ -675,33 +671,23 @@ class _FilterBar extends StatelessWidget {
                         vertical: 7,
                       ),
                       decoration: BoxDecoration(
-                        gradient: LinearGradient(
-                          colors: isSelected
-                              ? [
-                                  GussoniBrand.primary.withValues(alpha: .94),
-                                  GussoniBrand.info.withValues(alpha: .84),
-                                ]
-                              : [
-                                  Colors.white.withValues(alpha: .58),
-                                  GussoniBrand.glassSurfaceMuted.withValues(
-                                    alpha: .68,
-                                  ),
-                                ],
-                        ),
+                        color: isSelected
+                            ? GussoniBrand.surface
+                            : GussoniBrand.surfaceSubtle,
                         borderRadius: BorderRadius.circular(18),
                         border: Border.all(
                           color: isSelected
-                              ? Colors.white.withValues(alpha: .62)
-                              : Colors.white.withValues(alpha: .72),
+                              ? GussoniBrand.primaryBorder.withValues(alpha: .8)
+                              : GussoniBrand.border,
                         ),
                         boxShadow: isSelected
                             ? [
                                 BoxShadow(
                                   color: GussoniBrand.primary.withValues(
-                                    alpha: .18,
+                                    alpha: .08,
                                   ),
-                                  blurRadius: 14,
-                                  offset: const Offset(0, 8),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
                                 ),
                               ]
                             : null,
@@ -713,9 +699,11 @@ class _FilterBar extends StatelessWidget {
                             t.$2,
                             style: TextStyle(
                               fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                              fontWeight: isSelected
+                                  ? FontWeight.w800
+                                  : FontWeight.w600,
                               color: isSelected
-                                  ? Colors.white
+                                  ? GussoniBrand.textPrimary
                                   : GussoniBrand.textSecondary,
                             ),
                           ),
@@ -728,8 +716,8 @@ class _FilterBar extends StatelessWidget {
                               ),
                               decoration: BoxDecoration(
                                 color: isSelected
-                                    ? Colors.white.withValues(alpha: .25)
-                                    : Colors.white.withValues(alpha: .56),
+                                    ? GussoniBrand.primaryBg
+                                    : Colors.white,
                                 borderRadius: BorderRadius.circular(10),
                               ),
                               child: Text(
@@ -738,7 +726,7 @@ class _FilterBar extends StatelessWidget {
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
                                   color: isSelected
-                                      ? Colors.white
+                                      ? GussoniBrand.primary
                                       : GussoniBrand.textMuted,
                                 ),
                               ),
@@ -1343,6 +1331,7 @@ class CreateOppDialog extends StatefulWidget {
     required this.userId,
     required this.repository,
     required this.companies,
+    this.customFieldDefinitions = const [],
     this.preselectedCompanyId,
     this.initialTitle,
     this.initialBandoSource,
@@ -1351,6 +1340,7 @@ class CreateOppDialog extends StatefulWidget {
   final String userId;
   final ApiWorkspaceRepository repository;
   final List<Company> companies;
+  final List<TeamCustomFieldDefinition> customFieldDefinitions;
   final String? preselectedCompanyId;
   final String? initialTitle;
   final String? initialBandoSource;
@@ -1376,6 +1366,8 @@ class _CreateOppDialogState extends State<CreateOppDialog> {
   DateTime? _scadOperativa;
   bool _saving = false;
   String? _error;
+  late final Map<String, TextEditingController> _customFieldControllers;
+  late final Map<String, String?> _customFieldSelectValues;
 
   @override
   void initState() {
@@ -1388,6 +1380,15 @@ class _CreateOppDialogState extends State<CreateOppDialog> {
       _bandoSourceCtrl.text = widget.initialBandoSource!;
     }
     _deadline = widget.initialDeadline;
+    _customFieldControllers = <String, TextEditingController>{
+      for (final field in widget.customFieldDefinitions)
+        if (field.type != CustomFieldType.select)
+          field.id: TextEditingController(),
+    };
+    _customFieldSelectValues = <String, String?>{
+      for (final field in widget.customFieldDefinitions)
+        if (field.type == CustomFieldType.select) field.id: null,
+    };
   }
 
   @override
@@ -1404,6 +1405,9 @@ class _CreateOppDialogState extends State<CreateOppDialog> {
       _partnerCtrl,
     ]) {
       c.dispose();
+    }
+    for (final controller in _customFieldControllers.values) {
+      controller.dispose();
     }
     super.dispose();
   }
@@ -1439,6 +1443,18 @@ class _CreateOppDialogState extends State<CreateOppDialog> {
           partnerCommerciale: _partnerCtrl.text.trim(),
           scadenzaPresentazione: _scadPresentazione,
           scadenzaOperativa: _scadOperativa,
+          customFields: {
+            for (final field in widget.customFieldDefinitions)
+              if (field.type == CustomFieldType.select)
+                if ((_customFieldSelectValues[field.id]?.trim().isNotEmpty ??
+                    false))
+                  field.id: _customFieldSelectValues[field.id]!.trim()
+                else if ((_customFieldControllers[field.id]?.text
+                        .trim()
+                        .isNotEmpty ??
+                    false))
+                  field.id: _customFieldControllers[field.id]!.text.trim(),
+          },
         ),
       );
       if (mounted) Navigator.of(context).pop();
@@ -1589,6 +1605,17 @@ class _CreateOppDialogState extends State<CreateOppDialog> {
             decoration: NexoraDialog.fieldDecoration('Note'),
             maxLines: 3,
           ),
+          if (widget.customFieldDefinitions.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            CustomFieldsSection(
+              definitions: widget.customFieldDefinitions,
+              controllers: _customFieldControllers,
+              selectValues: _customFieldSelectValues,
+              onSelectChanged: (fieldId, value) =>
+                  setState(() => _customFieldSelectValues[fieldId] = value),
+              compact: true,
+            ),
+          ],
           if (_error != null) ...[
             const SizedBox(height: 10),
             Text(

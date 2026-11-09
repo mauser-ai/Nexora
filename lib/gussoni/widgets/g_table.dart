@@ -836,27 +836,6 @@ class GScreenLayout extends StatelessWidget {
           ],
         );
 
-        final headerChildren = <Widget>[];
-        if (showHeader) {
-          headerChildren.add(Expanded(child: titleBlock));
-        } else {
-          headerChildren.add(const Spacer());
-        }
-        if (search != null) {
-          headerChildren.add(const SizedBox(width: 12));
-          headerChildren.add(search);
-        }
-        if (action != null) {
-          headerChildren.add(const SizedBox(width: 10));
-          headerChildren.add(action!);
-        }
-        if (onPinContext != null) {
-          headerChildren.add(const SizedBox(width: 8));
-          headerChildren.add(
-            _AiContextStar(isPinned: isPinned, onToggle: onPinContext!),
-          );
-        }
-
         Widget responsiveFilters() {
           final maxWidth = (constraints.maxWidth - (compact ? 24 : 28))
               .clamp(0.0, double.infinity)
@@ -889,6 +868,41 @@ class GScreenLayout extends StatelessWidget {
           );
         }
 
+        Widget desktopControlsRow() {
+          final rightControls = <Widget>[];
+          if (search != null) rightControls.add(search);
+          if (action != null) {
+            if (rightControls.isNotEmpty) {
+              rightControls.add(const SizedBox(width: 10));
+            }
+            rightControls.add(responsiveAction());
+          }
+          if (onPinContext != null) {
+            if (rightControls.isNotEmpty) {
+              rightControls.add(const SizedBox(width: 8));
+            }
+            rightControls.add(
+              _AiContextStar(isPinned: isPinned, onToggle: onPinContext!),
+            );
+          }
+
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              if (filters != null)
+                Expanded(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: responsiveFilters(),
+                  ),
+                )
+              else
+                const Spacer(),
+              if (rightControls.isNotEmpty) ...rightControls,
+            ],
+          );
+        }
+
         final needsToolbar =
             showHeader || search != null || action != null || filters != null;
 
@@ -905,35 +919,41 @@ class GScreenLayout extends StatelessWidget {
               if (needsToolbar) ...[
                 Container(
                   padding: EdgeInsets.all(compact ? 12 : 14),
-                  decoration: GussoniBrand.glassPanel(radius: 12),
+                  decoration: BoxDecoration(
+                    color: GussoniBrand.surface,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: GussoniBrand.border),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (showHeader || search != null || action != null)
-                        compact
-                            ? Column(
-                                crossAxisAlignment: CrossAxisAlignment.stretch,
-                                children: [
-                                  if (showHeader) titleBlock,
-                                  if (showHeader &&
-                                      (search != null || action != null))
-                                    const SizedBox(height: 12),
-                                  ?search,
-                                  if (action != null) ...[
-                                    SizedBox(height: search != null ? 10 : 0),
-                                    Align(
-                                      alignment: Alignment.centerRight,
-                                      child: responsiveAction(),
-                                    ),
-                                  ],
-                                ],
-                              )
-                            : Row(children: headerChildren),
-                      if (filters != null) ...[
-                        if (showHeader || search != null || action != null)
+                      if (showHeader) ...[
+                        titleBlock,
+                        if (search != null ||
+                            action != null ||
+                            filters != null ||
+                            onPinContext != null)
                           const SizedBox(height: 12),
-                        responsiveFilters(),
                       ],
+                      if (compact) ...[
+                        if (search != null) search,
+                        if (action != null) ...[
+                          SizedBox(height: search != null ? 10 : 0),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: responsiveAction(),
+                          ),
+                        ],
+                        if (filters != null) ...[
+                          if (search != null || action != null)
+                            const SizedBox(height: 12),
+                          responsiveFilters(),
+                        ],
+                      ] else if (search != null ||
+                          action != null ||
+                          filters != null ||
+                          onPinContext != null)
+                        desktopControlsRow(),
                     ],
                   ),
                 ),

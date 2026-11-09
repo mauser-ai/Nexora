@@ -1,11 +1,11 @@
 {
-    "name": "gussoni_crm",
-    "short_name": "gussoni_crm",
+    "name": "Nexora",
+    "short_name": "Nexora",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#F7F7F7",
+    "theme_color": "#00332A",
+    "description": "Nexora, il gestionale che si muove come un sistema operativo.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

@@ -1,0 +1,10 @@
+<?php
+declare(strict_types=1);
+
+return [
+    'secret_key' => 'sk_test_xxx',
+    'publishable_key' => 'pk_test_xxx',
+    'default_country' => 'IT',
+    'platform_name' => 'Nexora',
+    'platform_url' => 'https://nexora.sviluppo.host',
+];

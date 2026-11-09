@@ -37,6 +37,14 @@ migrate_working_dir/
 # Local backend secrets
 backend/archivio_api/integrations/config.local.php
 backend/ai_api/config.local.php
+backend/api/stripe/config.local.php
+**/config.local.php
+
+# Local customer exports contain production data
+/backend/export/
+/backend/archivio/shares/
+/backend/archivio/storage/
+/backend/api/uploads/
 
 # Symbolication related
 app.*.symbols

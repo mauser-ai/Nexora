@@ -114,13 +114,14 @@ class ArchiveService {
   ArchiveService({http.Client? client}) : _client = client ?? http.Client();
 
   final http.Client _client;
+  static const Duration _requestTimeout = Duration(seconds: 14);
   static const String _basePath = String.fromEnvironment(
     'ARCHIVE_API_BASE',
     defaultValue: '/archivio/api',
   );
   static const String _apiOrigin = String.fromEnvironment(
     'ARCHIVE_API_ORIGIN',
-    defaultValue: 'https://business.gweb.agency',
+    defaultValue: 'https://nexora.sviluppo.host',
   );
 
   Uri _uri(String script, [Map<String, String>? query]) {
@@ -159,7 +160,7 @@ class ArchiveService {
   }
 
   Future<ArchiveListResponse> list(String path) async {
-    final response = await _client.get(_uri('list.php', {'path': path}));
+    final response = await _getWithRetry(_uri('list.php', {'path': path}));
     final payload = _decodeResponse(response);
     return ArchiveListResponse.fromMap(payload);
   }
@@ -168,7 +169,7 @@ class ArchiveService {
     required ArchiveIntegrationProvider provider,
     required String path,
   }) async {
-    final response = await _client.get(
+    final response = await _getWithRetry(
       _uri('integrations/list.php', {'provider': provider.key, 'path': path}),
     );
     final payload = _decodeResponse(response);
@@ -275,7 +276,7 @@ class ArchiveService {
   }
 
   Future<List<String>> listFolders() async {
-    final response = await _client.get(_uri('list_folders.php'));
+    final response = await _getWithRetry(_uri('list_folders.php'));
     final payload = _decodeResponse(response);
     final folders = (payload['folders'] as List<dynamic>? ?? const [])
         .map((item) => (item as String?) ?? '')
@@ -287,7 +288,7 @@ class ArchiveService {
   Future<List<String>> listIntegrationFolders(
     ArchiveIntegrationProvider provider,
   ) async {
-    final response = await _client.get(
+    final response = await _getWithRetry(
       _uri('integrations/list_folders.php', {'provider': provider.key}),
     );
     final payload = _decodeResponse(response);
@@ -321,7 +322,7 @@ class ArchiveService {
     if (token.trim().isEmpty) {
       throw StateError('Token condivisione non disponibile.');
     }
-    final metaResponse = await _client.get(
+    final metaResponse = await _getWithRetry(
       _uri('share_meta.php', {'token': token}),
     );
     final metaPayload = _decodeResponse(metaResponse);
@@ -408,15 +409,38 @@ class ArchiveService {
     }
   }
 
+  Future<http.Response> _getWithRetry(Uri uri) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await _client.get(uri).timeout(_requestTimeout);
+        if (response.statusCode >= 500 && attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 350));
+          continue;
+        }
+        return response;
+      } catch (error) {
+        lastError = error;
+        if (attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 350));
+          continue;
+        }
+      }
+    }
+    throw StateError('Archivio temporaneamente non raggiungibile: $lastError');
+  }
+
   Future<Map<String, dynamic>> _postJson(
     String script,
     Map<String, dynamic> payload,
   ) async {
-    final response = await _client.post(
-      _uri(script),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    );
+    final response = await _client
+        .post(
+          _uri(script),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode(payload),
+        )
+        .timeout(_requestTimeout);
     return _decodeResponse(response);
   }
 

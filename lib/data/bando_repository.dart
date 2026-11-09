@@ -1,18 +1,221 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/bando_models.dart';
 import 'api_client.dart';
 
+class ExternalBandoSearchRequest {
+  const ExternalBandoSearchRequest({
+    this.query = '',
+    this.page = 0,
+    this.hitsPerPage = 10,
+    this.onlyOpen = true,
+    this.areaGeografica = const [],
+    this.beneficiari = const [],
+    this.settore = const [],
+    this.agevolazione = const [],
+    this.speseFinanziate = const [],
+  });
+
+  final String query;
+  final int page;
+  final int hitsPerPage;
+  final bool onlyOpen;
+  final List<String> areaGeografica;
+  final List<String> beneficiari;
+  final List<String> settore;
+  final List<String> agevolazione;
+  final List<String> speseFinanziate;
+
+  Map<String, dynamic> toJson() => {
+    'query': query,
+    'page': page,
+    'hitsPerPage': hitsPerPage,
+    'onlyOpen': onlyOpen,
+    'filters': {
+      'areaGeografica': areaGeografica,
+      'beneficiari': beneficiari,
+      'settore': settore,
+      'agevolazione': agevolazione,
+      'speseFinanziate': speseFinanziate,
+    },
+  };
+
+  Map<String, List<String>> get filterMap => {
+    'taxonomies_hierarchical.area_geografica': areaGeografica,
+    'taxonomies.beneficiari': beneficiari,
+    'taxonomies_hierarchical.settore': settore,
+    'taxonomies.agevolazione': agevolazione,
+    'taxonomies.spese_finanziate': speseFinanziate,
+  };
+}
+
+class ExternalBandoSearchResult {
+  const ExternalBandoSearchResult({
+    required this.items,
+    required this.page,
+    required this.nbPages,
+    required this.nbHits,
+    required this.source,
+  });
+
+  final List<ExternalBandoItem> items;
+  final int page;
+  final int nbPages;
+  final int nbHits;
+  final String source;
+
+  factory ExternalBandoSearchResult.fromJson(dynamic raw) {
+    final map = raw is Map ? raw : const {};
+    final items = (map['items'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map((item) => ExternalBandoItem.fromJson(item))
+        .toList();
+    return ExternalBandoSearchResult(
+      items: items,
+      page: (map['page'] as num?)?.toInt() ?? 0,
+      nbPages: (map['nbPages'] as num?)?.toInt() ?? 0,
+      nbHits: (map['nbHits'] as num?)?.toInt() ?? items.length,
+      source: (map['source'] ?? 'Fonte esterna').toString(),
+    );
+  }
+}
+
+class ExternalBandoItem {
+  const ExternalBandoItem({
+    required this.externalId,
+    required this.titolo,
+    required this.ente,
+    required this.descrizione,
+    required this.link,
+    this.scadenza,
+    this.scadenzaTesto = '',
+    this.regioni = const [],
+    this.beneficiari = const [],
+    this.settori = const [],
+    this.agevolazioni = const [],
+    this.speseFinanziate = const [],
+    this.source = 'Fonte esterna',
+  });
+
+  final String externalId;
+  final String titolo;
+  final String ente;
+  final String descrizione;
+  final String link;
+  final DateTime? scadenza;
+  final String scadenzaTesto;
+  final List<String> regioni;
+  final List<String> beneficiari;
+  final List<String> settori;
+  final List<String> agevolazioni;
+  final List<String> speseFinanziate;
+  final String source;
+
+  static List<String> _strings(dynamic value) => (value as List<dynamic>? ?? [])
+      .map((item) => item.toString())
+      .where((item) => item.trim().isNotEmpty)
+      .toList();
+
+  factory ExternalBandoItem.fromJson(Map<dynamic, dynamic> map) {
+    DateTime? date(dynamic value) =>
+        value is String ? DateTime.tryParse(value) : null;
+    return ExternalBandoItem(
+      externalId: (map['externalId'] ?? '').toString(),
+      titolo: (map['titolo'] ?? '').toString(),
+      ente: (map['ente'] ?? '').toString(),
+      descrizione: (map['descrizione'] ?? '').toString(),
+      link: (map['link'] ?? '').toString(),
+      scadenza: date(map['scadenza']),
+      scadenzaTesto: (map['scadenzaTesto'] ?? '').toString(),
+      regioni: _strings(map['regioni']),
+      beneficiari: _strings(map['beneficiari']),
+      settori: _strings(map['settori']),
+      agevolazioni: _strings(map['agevolazioni']),
+      speseFinanziate: _strings(map['speseFinanziate']),
+      source: (map['source'] ?? 'Fonte esterna').toString(),
+    );
+  }
+
+  factory ExternalBandoItem.fromAlgolia(Map<dynamic, dynamic> hit) {
+    final taxonomies = hit['taxonomies'] is Map ? hit['taxonomies'] as Map : {};
+    List<String> tax(String key) => _strings(taxonomies[key]);
+    final permalink = (hit['permalink'] ?? '').toString();
+    final link = permalink.startsWith('/')
+        ? 'https://www.contributieuropa.com$permalink'
+        : permalink;
+    final scadenzaRaw = (hit['scadenza'] ?? '').toString();
+    final scadenzaText = (hit['scadenza_testo'] ?? scadenzaRaw).toString();
+
+    return ExternalBandoItem(
+      externalId: (hit['objectID'] ?? hit['post_id'] ?? '').toString(),
+      titolo: (hit['post_title'] ?? hit['title'] ?? '').toString(),
+      ente: 'Contributi Europa',
+      descrizione: _stripHtml(
+        (hit['post_excerpt'] ?? hit['content'] ?? '').toString(),
+      ),
+      link: link,
+      scadenza: _parseDate(scadenzaRaw),
+      scadenzaTesto: scadenzaText,
+      regioni: tax('area_geografica'),
+      beneficiari: tax('beneficiari'),
+      settori: tax('settore'),
+      agevolazioni: tax('agevolazione'),
+      speseFinanziate: tax('spese_finanziate'),
+      source: 'Contributi Europa',
+    );
+  }
+
+  static DateTime? _parseDate(String value) {
+    final normalized = value.trim();
+    if (normalized.isEmpty) return null;
+    final direct = DateTime.tryParse(normalized);
+    if (direct != null) return direct;
+    final match = RegExp(
+      r'^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$',
+    ).firstMatch(normalized);
+    if (match == null) return null;
+    final day = int.tryParse(match.group(1)!);
+    final month = int.tryParse(match.group(2)!);
+    final year = int.tryParse(match.group(3)!);
+    if (day == null || month == null || year == null) return null;
+    return DateTime(year, month, day);
+  }
+
+  static String _stripHtml(String value) => value
+      .replaceAll(RegExp(r'<[^>]+>'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+
+  Bando toDraft() => Bando(
+    id: '',
+    titolo: titolo,
+    ente: ente.isEmpty ? source : ente,
+    descrizione: descrizione,
+    link: link,
+    note: [
+      if (externalId.isNotEmpty) 'ID fonte: $externalId',
+      if (scadenzaTesto.isNotEmpty) 'Scadenza fonte: $scadenzaTesto',
+      if (beneficiari.isNotEmpty) 'Beneficiari: ${beneficiari.join(', ')}',
+      if (settori.isNotEmpty) 'Settori: ${settori.join(', ')}',
+      if (agevolazioni.isNotEmpty) 'Agevolazioni: ${agevolazioni.join(', ')}',
+      if (speseFinanziate.isNotEmpty)
+        'Spese finanziate: ${speseFinanziate.join(', ')}',
+    ].join('\n'),
+    stato: BandoStato.aperto,
+    scadenza: scadenza,
+    regioni: regioni,
+    areeInvestimento: speseFinanziate,
+  );
+}
+
 /// Anagrafica bandi del Centro Studi, condivisa con il team.
 /// [scopeId] = id del team (fallback: uid dell'utente senza team).
 ///
-/// Doppia modalità di persistenza:
-/// 1. **API PHP / MySQL** (`/api/bandi/index.php`, tabella creata da
-///    `install.php`) — preferita, stessa base dati del gestionale;
-/// 2. **Firestore** (`bandi_workspaces/{scopeId}/bandi`) — fallback
-///    automatico finché l'endpoint non è deployato.
+/// Persistenza MySQL-only: Firebase resta solo per Auth e notifiche push.
 class BandoRepository {
   BandoRepository({FirebaseFirestore? firestore, ApiClient? api})
     : _db = firestore ?? FirebaseFirestore.instance,
@@ -51,7 +254,12 @@ class BandoRepository {
       final raw = await _api.get('/bandi/index.php', query: {'scope': scopeId});
       _apiMode = raw is Map && raw['bandi'] is List;
     } catch (_) {
-      _apiMode = false;
+      throw ApiException(
+        'API bandi MySQL non disponibile. Installa/carica /api/bandi/index.php.',
+      );
+    }
+    if (_apiMode != true) {
+      throw ApiException('Risposta API bandi MySQL non valida.');
     }
     return _apiMode!;
   }
@@ -174,6 +382,87 @@ class BandoRepository {
       return;
     }
     await _col(scopeId).doc(bandoId).delete();
+  }
+
+  Future<ExternalBandoSearchResult> searchExternal(
+    ExternalBandoSearchRequest request,
+  ) async {
+    try {
+      final raw = await _api.post(
+        '/bandi/search_external.php',
+        request.toJson(),
+      );
+      return ExternalBandoSearchResult.fromJson(raw);
+    } catch (_) {
+      return _searchExternalDirect(request);
+    }
+  }
+
+  Future<ExternalBandoSearchResult> _searchExternalDirect(
+    ExternalBandoSearchRequest request,
+  ) async {
+    final filterGroups = <String>[];
+    for (final entry in request.filterMap.entries) {
+      final values = entry.value
+          .map((item) => item.trim())
+          .where((item) => item.isNotEmpty)
+          .toList();
+      if (values.isEmpty) continue;
+      final parts = values.map((value) {
+        final safe = value.replaceAll('"', r'\"');
+        if (entry.key.contains('hierarchical')) {
+          return '${entry.key}.lvl0:"$safe" OR ${entry.key}.lvl1:"$safe"';
+        }
+        return '${entry.key}:"$safe"';
+      }).toList();
+      filterGroups.add('(${parts.join(' OR ')})');
+    }
+    if (request.onlyOpen) {
+      filterGroups.add(
+        '(scadenza_testo:"Bandi aperti" OR scadenza_testo:"Aperto")',
+      );
+    }
+
+    final response = await http.post(
+      Uri.parse(
+        'https://LHI8XKBFMN-dsn.algolia.net/1/indexes/ceu_searchable_posts/query',
+      ),
+      headers: const {
+        'Content-Type': 'application/json',
+        'X-Algolia-Application-Id': 'LHI8XKBFMN',
+        'X-Algolia-API-Key': 'f55131344ae840ea7f27c6dcb0782654',
+      },
+      body: jsonEncode({
+        'query': request.query,
+        'hitsPerPage': request.hitsPerPage,
+        'page': request.page,
+        'filters': filterGroups.join(' AND '),
+        'facets': ['*'],
+        'maxValuesPerFacet': 1000,
+      }),
+    );
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw ApiException(
+        'Ricerca bandi esterna non disponibile (${response.statusCode})',
+        statusCode: response.statusCode,
+      );
+    }
+
+    final raw = jsonDecode(response.body);
+    final map = raw is Map ? raw : const {};
+    final items = (map['hits'] as List<dynamic>? ?? const [])
+        .whereType<Map>()
+        .map(ExternalBandoItem.fromAlgolia)
+        .where((item) => item.titolo.trim().isNotEmpty)
+        .toList();
+    return ExternalBandoSearchResult(
+      items: items,
+      page: (map['page'] as num?)?.toInt() ?? request.page,
+      nbPages: (map['nbPages'] as num?)?.toInt() ?? 0,
+      nbHits: (map['nbHits'] as num?)?.toInt() ?? items.length,
+      source: 'Contributi Europa',
+    );
   }
 
   void dispose() {

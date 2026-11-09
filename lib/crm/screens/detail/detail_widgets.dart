@@ -30,11 +30,7 @@ class DetailBackBar extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: .54),
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: Colors.white.withValues(alpha: .72)),
-              ),
+              decoration: GussoniBrand.glassField(radius: 999),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -91,24 +87,10 @@ class _DetailInfoCardState extends State<DetailInfoCard> {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            GussoniBrand.glassSurfaceStrong.withValues(alpha: .92),
-            GussoniBrand.glassSurfaceMuted.withValues(alpha: .76),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: .72)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x12000000),
-            blurRadius: 28,
-            offset: Offset(0, 14),
-          ),
-        ],
+      decoration: GussoniBrand.glassPanel(
+        radius: 22,
+        accent: GussoniBrand.surface,
+        opacity: .98,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -269,24 +251,10 @@ class _DetailNotesCardState extends State<DetailNotesCard> {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            GussoniBrand.glassSurfaceStrong.withValues(alpha: .90),
-            GussoniBrand.glassSurfaceMuted.withValues(alpha: .74),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: .72)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x12000000),
-            blurRadius: 28,
-            offset: Offset(0, 14),
-          ),
-        ],
+      decoration: GussoniBrand.glassPanel(
+        radius: 22,
+        accent: GussoniBrand.surface,
+        opacity: .98,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -453,24 +421,10 @@ class _DetailAccordionState extends State<DetailAccordion>
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 8),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            GussoniBrand.glassSurfaceStrong.withValues(alpha: .88),
-            GussoniBrand.glassSurfaceMuted.withValues(alpha: .72),
-          ],
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: .70)),
-        boxShadow: const [
-          BoxShadow(
-            color: Color(0x0E000000),
-            blurRadius: 20,
-            offset: Offset(0, 10),
-          ),
-        ],
+      decoration: GussoniBrand.glassPanel(
+        radius: 18,
+        accent: GussoniBrand.surface,
+        opacity: .98,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,

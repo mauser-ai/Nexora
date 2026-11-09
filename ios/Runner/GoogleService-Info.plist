@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyAfVVEKX_ZQ3ItzEcHDvZuX43stykDqf8U</string>
+	<key>BUNDLE_ID</key>
+	<string>app.nexora</string>
+	<key>GCM_SENDER_ID</key>
+	<string>362917162978</string>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:362917162978:ios:e7ead42cd3c2a5e32793bb</string>
+	<key>IS_ADS_ENABLED</key>
+	<false/>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false/>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true/>
+	<key>IS_GCM_ENABLED</key>
+	<true/>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true/>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>PROJECT_ID</key>
+	<string>gussoni-d3153</string>
+	<key>STORAGE_BUCKET</key>
+	<string>gussoni-d3153.firebasestorage.app</string>
+</dict>
+</plist>

@@ -218,10 +218,10 @@ class _MobileShellScaffoldState extends State<MobileShellScaffold>
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                'Gussoni CRM',
+                'Nexora',
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: GoogleFonts.ebGaramond(
+                style: GoogleFonts.montserrat(
                   fontSize: 19,
                   fontWeight: FontWeight.w600,
                   color: GussoniBrand.textPrimary,

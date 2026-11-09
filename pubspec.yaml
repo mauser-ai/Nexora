@@ -46,7 +46,7 @@ flutter:
   uses-material-design: true
   assets:
     - assets/branding/app_icon.png
-    - assets/branding/gussoni_logo_white.webp
+    - assets/branding/nexora_wordmark_default.png
 
 flutter_launcher_icons:
   image_path: assets/branding/app_icon.png
@@ -55,8 +55,8 @@ flutter_launcher_icons:
   web:
     generate: true
     image_path: assets/branding/app_icon.png
-    background_color: "#ffffff"
-    theme_color: "#5B1205"
+    background_color: "#F7F7F7"
+    theme_color: "#00332A"
   macos:
     generate: true
     image_path: assets/branding/app_icon.png

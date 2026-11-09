@@ -847,9 +847,11 @@ class _HeroCopy extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isContact = section.mode == _PreviewMode.contact;
-    return Column(
+    final content = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisAlignment: compact
+          ? MainAxisAlignment.start
+          : MainAxisAlignment.center,
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -937,6 +939,15 @@ class _HeroCopy extends StatelessWidget {
           ],
         ),
       ],
+    );
+
+    if (!compact) {
+      return content;
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(right: 4, bottom: 8),
+      child: content,
     );
   }
 }

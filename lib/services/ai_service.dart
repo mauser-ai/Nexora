@@ -55,7 +55,7 @@ class AiService {
   );
   static const String _apiOrigin = String.fromEnvironment(
     'ARCHIVE_API_ORIGIN',
-    defaultValue: 'https://business.gweb.agency',
+    defaultValue: 'https://nexora.sviluppo.host',
   );
 
   Uri _uri(String script) {
@@ -132,15 +132,19 @@ class AiService {
             case 'text':
               yield AiStreamEvent.text((evt['delta'] as String?) ?? '');
             case 'tool_use':
-              yield AiStreamEvent.toolUse(AiToolCall(
-                id: (evt['id'] as String?) ?? '',
-                name: (evt['name'] as String?) ?? '',
-                input: (evt['input'] as Map?)?.cast<String, dynamic>() ?? {},
-              ));
+              yield AiStreamEvent.toolUse(
+                AiToolCall(
+                  id: (evt['id'] as String?) ?? '',
+                  name: (evt['name'] as String?) ?? '',
+                  input: (evt['input'] as Map?)?.cast<String, dynamic>() ?? {},
+                ),
+              );
             case 'done':
               yield AiStreamEvent.done((evt['stop_reason'] as String?) ?? '');
             case 'error':
-              yield AiStreamEvent.error((evt['message'] as String?) ?? 'Errore');
+              yield AiStreamEvent.error(
+                (evt['message'] as String?) ?? 'Errore',
+              );
           }
         } catch (_) {}
       }

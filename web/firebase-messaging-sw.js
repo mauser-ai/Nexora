@@ -15,7 +15,7 @@ const messaging = firebase.messaging();
 
 messaging.onBackgroundMessage((payload) => {
   const notification = payload.notification || {};
-  const title = notification.title || 'Gussoni CRM';
+  const title = notification.title || 'Nexora';
   const options = {
     body: notification.body || 'Hai una nuova notifica.',
     icon: '/icons/Icon-192.png',

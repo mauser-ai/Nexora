@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
+import 'custom_field_models.dart';
+
 // ─────────────────────────────────────────────
 // Enums
 // ─────────────────────────────────────────────
@@ -290,6 +292,7 @@ class Company {
     this.percentualeExport,
     this.areeInvestimento = const [],
     this.ricaviAnnui = const {},
+    this.customFields = const {},
   });
 
   final String id;
@@ -338,6 +341,7 @@ class Company {
   final double? percentualeExport;
   final List<AreaInvestimento> areeInvestimento;
   final Map<int, double> ricaviAnnui; // {anno: ricavo} es. {2022: 500000.0}
+  final Map<String, dynamic> customFields;
 
   double? get mediaRicavi {
     if (ricaviAnnui.isEmpty) return annualRevenue;
@@ -351,7 +355,7 @@ class Company {
     // PHP può restituire [] invece di {} per mappe vuote
     final rawRicavi = map['ricaviAnnui'];
     final ricaviMap = (rawRicavi is Map)
-        ? Map<String, dynamic>.from(rawRicavi as Map)
+        ? Map<String, dynamic>.from(rawRicavi)
         : <String, dynamic>{};
     return Company(
       id: id,
@@ -405,6 +409,7 @@ class Company {
       ricaviAnnui: ricaviMap.map(
         (k, v) => MapEntry(int.tryParse(k) ?? 0, (v as num).toDouble()),
       ),
+      customFields: normalizeCustomFieldValues(map['customFields']),
     );
   }
 
@@ -452,6 +457,7 @@ class Company {
     if (percentualeExport != null) 'percentualeExport': percentualeExport,
     'areeInvestimento': areeInvestimento.map((a) => a.toMap()).toList(),
     'ricaviAnnui': ricaviAnnui.map((k, v) => MapEntry(k.toString(), v)),
+    'customFields': customFields,
   };
 
   Company copyWith({
@@ -497,6 +503,7 @@ class Company {
     double? percentualeExport,
     List<AreaInvestimento>? areeInvestimento,
     Map<int, double>? ricaviAnnui,
+    Map<String, dynamic>? customFields,
   }) => Company(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -541,6 +548,7 @@ class Company {
     percentualeExport: percentualeExport ?? this.percentualeExport,
     areeInvestimento: areeInvestimento ?? this.areeInvestimento,
     ricaviAnnui: ricaviAnnui ?? this.ricaviAnnui,
+    customFields: customFields ?? this.customFields,
   );
 }
 
@@ -596,6 +604,7 @@ class Opportunity {
     this.termineRendicontazione,
     this.statoRendicontazione = StatoRendicontazione.none,
     this.noteRendicontazione = '',
+    this.customFields = const {},
   });
 
   final String id;
@@ -648,6 +657,7 @@ class Opportunity {
   final DateTime? termineRendicontazione;
   final StatoRendicontazione statoRendicontazione;
   final String noteRendicontazione;
+  final Map<String, dynamic> customFields;
 
   factory Opportunity.fromMap(String id, Map<String, dynamic> map) {
     return Opportunity(
@@ -716,6 +726,7 @@ class Opportunity {
         map['statoRendicontazione'] as String?,
       ),
       noteRendicontazione: map['noteRendicontazione'] as String? ?? '',
+      customFields: normalizeCustomFieldValues(map['customFields']),
     );
   }
 
@@ -775,6 +786,7 @@ class Opportunity {
       'termineRendicontazione': Timestamp.fromDate(termineRendicontazione!),
     'statoRendicontazione': statoRendicontazione.name,
     'noteRendicontazione': noteRendicontazione,
+    'customFields': customFields,
   };
 
   Opportunity copyWith({
@@ -821,6 +833,7 @@ class Opportunity {
     DateTime? termineRendicontazione,
     StatoRendicontazione? statoRendicontazione,
     String? noteRendicontazione,
+    Map<String, dynamic>? customFields,
   }) => Opportunity(
     id: id ?? this.id,
     companyId: companyId ?? this.companyId,
@@ -875,6 +888,7 @@ class Opportunity {
         termineRendicontazione ?? this.termineRendicontazione,
     statoRendicontazione: statoRendicontazione ?? this.statoRendicontazione,
     noteRendicontazione: noteRendicontazione ?? this.noteRendicontazione,
+    customFields: customFields ?? this.customFields,
   );
 }
 
@@ -946,8 +960,9 @@ class Preventivo {
 
   /// Success fee calcolata sugli scaglioni contrattuali.
   double calculateSuccessFee(double grantAmount) {
-    if (successFeePercent != null)
+    if (successFeePercent != null) {
       return grantAmount * successFeePercent! / 100;
+    }
     if (grantAmount <= 50000) return grantAmount * 0.09;
     return grantAmount * 0.08;
   }
@@ -1267,6 +1282,7 @@ class Project {
     // rendicontazione
     this.termineRendicontazione,
     this.statoRendicontazione = StatoRendicontazione.none,
+    this.customFields = const {},
   });
 
   final String id;
@@ -1319,6 +1335,7 @@ class Project {
   // rendicontazione
   final DateTime? termineRendicontazione;
   final StatoRendicontazione statoRendicontazione;
+  final Map<String, dynamic> customFields;
 
   ProjectStatus get projectStatus => parseProjectStatus(status);
 
@@ -1379,6 +1396,7 @@ class Project {
       statoRendicontazione: parseStatoRendicontazione(
         map['statoRendicontazione'] as String?,
       ),
+      customFields: normalizeCustomFieldValues(map['customFields']),
     );
   }
 
@@ -1431,6 +1449,7 @@ class Project {
     if (termineRendicontazione != null)
       'termineRendicontazione': Timestamp.fromDate(termineRendicontazione!),
     'statoRendicontazione': statoRendicontazione.name,
+    'customFields': customFields,
   };
 
   Project copyWith({
@@ -1469,6 +1488,7 @@ class Project {
     double? creditoImpostaRicevuto,
     DateTime? termineRendicontazione,
     StatoRendicontazione? statoRendicontazione,
+    Map<String, dynamic>? customFields,
   }) => Project(
     id: id,
     companyId: companyId ?? this.companyId,
@@ -1518,6 +1538,7 @@ class Project {
     termineRendicontazione:
         termineRendicontazione ?? this.termineRendicontazione,
     statoRendicontazione: statoRendicontazione ?? this.statoRendicontazione,
+    customFields: customFields ?? this.customFields,
   );
 }
 
@@ -1784,6 +1805,11 @@ class InvoiceDraft {
     this.isSuccessFee = false,
     this.grantAmount,
     this.notes = '',
+    this.paymentStatus = 'unpaid',
+    this.paidAmount = 0,
+    this.balanceDue,
+    this.paidAt,
+    this.posOriginPaymentId,
     this.createdAt,
     this.sentAt,
   });
@@ -1798,8 +1824,17 @@ class InvoiceDraft {
   final bool isSuccessFee; // true = fattura di premialità
   final double? grantAmount; // contributo su cui è calcolata la success fee
   final String notes;
+  final String paymentStatus;
+  final double paidAmount;
+  final double? balanceDue;
+  final DateTime? paidAt;
+  final String? posOriginPaymentId;
   final DateTime? createdAt;
   final DateTime? sentAt;
+
+  bool get isPaid => paymentStatus == 'paid';
+  bool get isPartiallyPaid => paymentStatus == 'partially_paid';
+  double get residualAmount => balanceDue ?? (amount - paidAmount);
 
   factory InvoiceDraft.fromMap(String id, Map<String, dynamic> map) {
     final rawLines = map['lines'] as List<dynamic>? ?? const [];
@@ -1817,6 +1852,17 @@ class InvoiceDraft {
       isSuccessFee: map['isSuccessFee'] as bool? ?? false,
       grantAmount: (map['grantAmount'] as num?)?.toDouble(),
       notes: map['notes'] as String? ?? '',
+      paymentStatus:
+          (map['paymentStatus'] as String? ?? 'unpaid').trim().isEmpty
+          ? 'unpaid'
+          : (map['paymentStatus'] as String? ?? 'unpaid'),
+      paidAmount: (map['paidAmount'] as num? ?? 0).toDouble(),
+      balanceDue: (map['balanceDue'] as num?)?.toDouble(),
+      paidAt: map['paidAt'] != null ? parseDate(map['paidAt']) : null,
+      posOriginPaymentId: (() {
+        final raw = (map['posOriginPaymentId'] as String?)?.trim() ?? '';
+        return raw.isEmpty ? null : raw;
+      })(),
       createdAt: map['createdAt'] != null ? parseDate(map['createdAt']) : null,
       sentAt: map['sentAt'] != null ? parseDate(map['sentAt']) : null,
     );
@@ -1832,6 +1878,11 @@ class InvoiceDraft {
     'isSuccessFee': isSuccessFee,
     if (grantAmount != null) 'grantAmount': grantAmount,
     'notes': notes,
+    'paymentStatus': paymentStatus,
+    'paidAmount': paidAmount,
+    if (balanceDue != null) 'balanceDue': balanceDue,
+    if (paidAt != null) 'paidAt': Timestamp.fromDate(paidAt!),
+    if (posOriginPaymentId != null) 'posOriginPaymentId': posOriginPaymentId,
     if (createdAt != null) 'createdAt': Timestamp.fromDate(createdAt!),
     if (sentAt != null) 'sentAt': Timestamp.fromDate(sentAt!),
   };
@@ -1847,6 +1898,11 @@ class InvoiceDraft {
     bool? isSuccessFee,
     double? grantAmount,
     String? notes,
+    String? paymentStatus,
+    double? paidAmount,
+    double? balanceDue,
+    DateTime? paidAt,
+    String? posOriginPaymentId,
     DateTime? createdAt,
     DateTime? sentAt,
   }) => InvoiceDraft(
@@ -1860,6 +1916,11 @@ class InvoiceDraft {
     isSuccessFee: isSuccessFee ?? this.isSuccessFee,
     grantAmount: grantAmount ?? this.grantAmount,
     notes: notes ?? this.notes,
+    paymentStatus: paymentStatus ?? this.paymentStatus,
+    paidAmount: paidAmount ?? this.paidAmount,
+    balanceDue: balanceDue ?? this.balanceDue,
+    paidAt: paidAt ?? this.paidAt,
+    posOriginPaymentId: posOriginPaymentId ?? this.posOriginPaymentId,
     createdAt: createdAt ?? this.createdAt,
     sentAt: sentAt ?? this.sentAt,
   );
@@ -2303,6 +2364,7 @@ class CompanyContact {
     required this.email,
     required this.phone,
     required this.role,
+    this.customFields = const {},
   });
   final String id;
   final String companyId;
@@ -2310,6 +2372,7 @@ class CompanyContact {
   final String email;
   final String phone;
   final String role;
+  final Map<String, dynamic> customFields;
 
   factory CompanyContact.fromMap(String id, Map<String, dynamic> map) =>
       CompanyContact(
@@ -2319,6 +2382,7 @@ class CompanyContact {
         email: map['email'] as String? ?? '',
         phone: map['phone'] as String? ?? '',
         role: map['role'] as String? ?? '',
+        customFields: normalizeCustomFieldValues(map['customFields']),
       );
 
   Map<String, dynamic> toMap() => {
@@ -2327,6 +2391,7 @@ class CompanyContact {
     'email': email,
     'phone': phone,
     'role': role,
+    'customFields': customFields,
   };
 
   CompanyContact copyWith({
@@ -2336,6 +2401,7 @@ class CompanyContact {
     String? email,
     String? phone,
     String? role,
+    Map<String, dynamic>? customFields,
   }) => CompanyContact(
     id: id ?? this.id,
     companyId: companyId ?? this.companyId,
@@ -2343,6 +2409,7 @@ class CompanyContact {
     email: email ?? this.email,
     phone: phone ?? this.phone,
     role: role ?? this.role,
+    customFields: customFields ?? this.customFields,
   );
 }
 

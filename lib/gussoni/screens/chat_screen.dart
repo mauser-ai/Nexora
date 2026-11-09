@@ -38,7 +38,7 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
   static const double _minListWidth = 300;
   static const double _maxListWidth = 520;
   static FlutterSecureStorage get _storage => const FlutterSecureStorage(
-    webOptions: WebOptions(dbName: 'gussoni_crm', publicKey: 'GussoniCRM'),
+    webOptions: WebOptions(dbName: 'nexora_crm', publicKey: 'NexoraCRM'),
   );
 
   final _composerCtrl = TextEditingController();
@@ -61,17 +61,17 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
   double _railWidth = 278;
   double _listWidth = 372;
 
-  static const _chatBg = Color(0xFFFAF9F7);
-  static const _chatRail = Color(0xFFFFFFFF);
-  static const _chatPanel = Color(0xFFFFFFFF);
-  static const _chatPanelAlt = Color(0xFFF6F4F1);
-  static const _chatBorder = Color(0xFFE9E5DF);
-  static const _chatText = Color(0xFF1C1D1F);
-  static const _chatMuted = Color(0xFF8C8478);
-  static const _chatAccent = Color(0xFFB08948);
-  static const _chatAccentSoft = Color(0xFFF5EDDE);
-  static const _chatMe = Color(0xFFF6E9E3);
-  static const _chatThem = Color(0xFFF6F4F1);
+  static const _chatBg = Color(0xFFF7F7F7);
+  static const _chatRail = Color(0xEEF7F7F7);
+  static const _chatPanel = Color(0xFFFDFDFD);
+  static const _chatPanelAlt = Color(0xFFF4F7F5);
+  static const _chatBorder = Color(0xFFD4E1DC);
+  static const _chatText = Color(0xFF02332A);
+  static const _chatMuted = Color(0xFF6B847E);
+  static const _chatAccent = Color(0xFFACCF78);
+  static const _chatAccentSoft = Color(0xFFF1F8E7);
+  static const _chatMe = Color(0xFFF2F7F5);
+  static const _chatThem = Color(0xFFF4F7F5);
 
   ChatGroup? get _selectedGroup =>
       _groups.where((group) => group.id == _selectedGroupId).firstOrNull;
@@ -545,9 +545,9 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
   };
 
   Color get _availabilityColor => switch (_availabilityStatus) {
-    _AvailabilityStatus.available => const Color(0xFF2BA24C),
-    _AvailabilityStatus.breakTime => const Color(0xFFD38A10),
-    _AvailabilityStatus.unavailable => const Color(0xFFB33A2C),
+    _AvailabilityStatus.available => Color(0xFF1F7A55),
+    _AvailabilityStatus.breakTime => Color(0xFF9B7A17),
+    _AvailabilityStatus.unavailable => Color(0xFFB43D34),
   };
 
   // Mobile: true = mostra thread, false = mostra lista conversazioni
@@ -576,7 +576,7 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
             gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [_chatBg, Color(0xFFFCFBF9)],
+              colors: [_chatBg, _chatPanelAlt],
             ),
             borderRadius: BorderRadius.circular(24),
           ),
@@ -614,13 +614,16 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
     );
   }
 
-  Widget _buildMobileLayout(ChatGroup? selectedGroup, {required bool isMobile}) {
+  Widget _buildMobileLayout(
+    ChatGroup? selectedGroup, {
+    required bool isMobile,
+  }) {
     return Container(
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [_chatBg, Color(0xFFFCFBF9)],
+          colors: [_chatBg, _chatPanelAlt],
         ),
         borderRadius: BorderRadius.circular(24),
       ),
@@ -880,13 +883,13 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
                       final message = _messages[index];
-                      final previous =
-                          index > 0 ? _messages[index - 1] : null;
+                      final previous = index > 0 ? _messages[index - 1] : null;
                       final showDayMarker =
                           previous == null ||
                           !_isSameDay(previous.createdAt, message.createdAt);
                       final prev = previous;
-                      final isGrouped = !showDayMarker &&
+                      final isGrouped =
+                          !showDayMarker &&
                           prev != null &&
                           prev.userId == message.userId &&
                           message.createdAt
@@ -953,7 +956,11 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
                   filled: false,
                   contentPadding: EdgeInsets.zero,
                 ),
-                style: const TextStyle(fontSize: 14, height: 1.4, color: _chatText),
+                style: const TextStyle(
+                  fontSize: 14,
+                  height: 1.4,
+                  color: _chatText,
+                ),
                 cursorColor: _chatAccent,
               ),
             ),
@@ -1063,8 +1070,8 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
                         selected: _selectedGroupId == group.id,
                         onTap: () {
                           setState(
-                            () => _collectionFilter =
-                                _ChatCollectionFilter.group,
+                            () =>
+                                _collectionFilter = _ChatCollectionFilter.group,
                           );
                           _selectGroup(group);
                         },
@@ -1338,13 +1345,13 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
                     itemCount: _messages.length,
                     itemBuilder: (context, index) {
                       final message = _messages[index];
-                      final previous =
-                          index > 0 ? _messages[index - 1] : null;
+                      final previous = index > 0 ? _messages[index - 1] : null;
                       final showDayMarker =
                           previous == null ||
                           !_isSameDay(previous.createdAt, message.createdAt);
                       final prev = previous;
-                      final isGrouped = !showDayMarker &&
+                      final isGrouped =
+                          !showDayMarker &&
                           prev != null &&
                           prev.userId == message.userId &&
                           message.createdAt
@@ -1435,18 +1442,12 @@ class _TeamChatScreenState extends State<TeamChatScreen> {
                           PopupMenuItem(value: '👍', child: Text('👍  Ok')),
                           PopupMenuItem(value: '🔥', child: Text('🔥  Top')),
                           PopupMenuItem(value: '🙏', child: Text('🙏  Grazie')),
-                          PopupMenuItem(
-                            value: '❗',
-                            child: Text('❗  Urgente'),
-                          ),
+                          PopupMenuItem(value: '❗', child: Text('❗  Urgente')),
                           PopupMenuItem(
                             value: '⏳',
                             child: Text('⏳  In attesa'),
                           ),
-                          PopupMenuItem(
-                            value: '📋',
-                            child: Text('📋  Nota'),
-                          ),
+                          PopupMenuItem(value: '📋', child: Text('📋  Nota')),
                           PopupMenuItem(
                             value: '🎯',
                             child: Text('🎯  Obiettivo'),
@@ -2039,7 +2040,9 @@ class _ConversationCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(18),
           border: selected
               ? Border.all(
-                  color: _TeamChatScreenState._chatAccent.withValues(alpha: .28),
+                  color: _TeamChatScreenState._chatAccent.withValues(
+                    alpha: .28,
+                  ),
                 )
               : null,
         ),
@@ -2051,8 +2054,7 @@ class _ConversationCard extends StatelessWidget {
               height: 44,
               decoration: BoxDecoration(
                 color: iconAccent.withValues(alpha: 0.14),
-                borderRadius:
-                    BorderRadius.circular(isDirect ? 99 : 14),
+                borderRadius: BorderRadius.circular(isDirect ? 99 : 14),
               ),
               alignment: Alignment.center,
               child: isDirect
@@ -2064,11 +2066,7 @@ class _ConversationCard extends StatelessWidget {
                         color: iconAccent,
                       ),
                     )
-                  : Icon(
-                      Icons.tag_rounded,
-                      size: 20,
-                      color: iconAccent,
-                    ),
+                  : Icon(Icons.tag_rounded, size: 20, color: iconAccent),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -2278,8 +2276,9 @@ class _ChatBubble extends StatelessWidget {
       padding: EdgeInsets.only(bottom: isGrouped ? 3 : 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
-        mainAxisAlignment:
-            isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+        mainAxisAlignment: isMine
+            ? MainAxisAlignment.end
+            : MainAxisAlignment.start,
         children: [
           if (!isMine) ...[
             if (isGrouped)
@@ -2424,11 +2423,7 @@ class _ComposerToolbarButton extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
-          child: Icon(
-            icon,
-            size: 20,
-            color: _TeamChatScreenState._chatMuted,
-          ),
+          child: Icon(icon, size: 20, color: _TeamChatScreenState._chatMuted),
         ),
       ),
     );

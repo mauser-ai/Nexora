@@ -1,0 +1,21 @@
+Options -Indexes
+Header always set X-Content-Type-Options "nosniff"
+Header always set X-Frame-Options "DENY"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+# Blocca accesso diretto a config.php
+<Files "config.php">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Blocca accesso diretto a bootstrap.php e middleware
+<FilesMatch "^(bootstrap|config)\.php$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Forza HTTPS (se il server lo supporta)
+# RewriteEngine On
+# RewriteCond %{HTTPS} off
+# RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]

@@ -1,54 +1,68 @@
 import 'dart:async';
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 import '../models/template_models.dart';
 import 'api_client.dart';
 
 /// Template PDF, template email e scelta template per documento.
 ///
-/// Dual-mode: preferisce l'API PHP/MySQL (`/api/app/templates.php`, tabelle
-/// di `install.php`); fallback Firestore finché l'endpoint non è deployato.
+/// MySQL-only: nessun fallback Firestore.
 class TemplateRepository {
-  TemplateRepository({FirebaseFirestore? firestore, ApiClient? api})
-    : _db = firestore ?? FirebaseFirestore.instance,
-      _api = api ?? ApiClient.instance;
+  TemplateRepository({ApiClient? api}) : _api = api ?? ApiClient.instance;
 
-  final FirebaseFirestore _db;
   final ApiClient _api;
 
   static bool? _apiMode;
+  static const Duration _cacheTtl = Duration(minutes: 3);
+  static final Map<String, _TemplateCacheEntry<List<DocumentTemplate>>>
+  _docsCache = {};
+  static final Map<String, _TemplateCacheEntry<List<EmailTemplate>>>
+  _emailsCache = {};
 
   final Map<String, StreamController<List<DocumentTemplate>>> _docCtrls = {};
   final Map<String, StreamController<List<EmailTemplate>>> _emailCtrls = {};
-  final Map<String, StreamSubscription<dynamic>> _fsSubs = {};
+  static const Duration _requestTimeout = Duration(seconds: 12);
 
-  Future<bool> _useApi() async {
+  Future<dynamic> _getWithTimeout(String path, {Map<String, String>? query}) =>
+      _api.get(path, query: query).timeout(_requestTimeout);
+
+  Future<dynamic> _postWithTimeout(String path, [Map<String, dynamic>? body]) =>
+      _api.post(path, body).timeout(_requestTimeout);
+
+  Future<dynamic> _putWithTimeout(
+    String path,
+    Map<String, dynamic> body, {
+    Map<String, String>? query,
+  }) => _api.put(path, body, query: query).timeout(_requestTimeout);
+
+  Future<dynamic> _deleteWithTimeout(
+    String path, {
+    Map<String, String>? query,
+  }) => _api.delete(path, query: query).timeout(_requestTimeout);
+
+  Future<bool> _useApi({bool forceRefresh = false}) async {
+    if (forceRefresh) {
+      _apiMode = null;
+    }
     if (_apiMode != null) return _apiMode!;
     try {
-      final raw = await _api.get(
+      final raw = await _getWithTimeout(
         '/app/templates.php',
-        query: {'type': 'document'},
+        query: {'probe': '1'},
       );
-      _apiMode = raw is Map && raw['templates'] is List;
+      _apiMode = raw is Map && raw['ok'] == true;
     } catch (_) {
       _apiMode = false;
     }
-    return _apiMode!;
+    return _apiMode == true;
   }
 
-  // ── Firestore refs (fallback) ──────────────────────────────────────────────
-
-  CollectionReference<Map<String, dynamic>> _col(String userId) =>
-      _db.collection('users').doc(userId).collection('documentTemplates');
-
-  CollectionReference<Map<String, dynamic>> _emailCol(String userId) =>
-      _db.collection('users').doc(userId).collection('emailTemplates');
-
-  CollectionReference<Map<String, dynamic>> _choiceCol(String userId) =>
-      _db.collection('users').doc(userId).collection('templateChoices');
-
-  // ── Parsing API ────────────────────────────────────────────────────────────
+  Future<void> _requireApi({bool forceRefresh = false}) async {
+    if (!await _useApi(forceRefresh: forceRefresh)) {
+      throw const ApiException(
+        'API template MySQL non disponibile. Carica /api/app/templates.php e aggiorna lo schema con /api/app/install.php?run=yes.',
+      );
+    }
+  }
 
   List<DocumentTemplate> _parseDocs(dynamic raw) {
     final items = (raw is Map ? raw['templates'] : null) as List? ?? [];
@@ -76,108 +90,84 @@ class TemplateRepository {
         .toList();
   }
 
-  // ── Template PDF ───────────────────────────────────────────────────────────
-
-  Stream<List<DocumentTemplate>> watchTemplates(String userId) {
+  Stream<List<DocumentTemplate>> watchTemplates(String userId) async* {
     final created = !_docCtrls.containsKey(userId);
     final ctrl = _docCtrls.putIfAbsent(
       userId,
       () => StreamController<List<DocumentTemplate>>.broadcast(),
     );
-    if (created) unawaited(_refreshDocs(userId));
-    return ctrl.stream;
+    yield _docsCache['$userId|*']?.value ?? const <DocumentTemplate>[];
+    if (created) {
+      unawaited(_refreshDocs(userId));
+    }
+    yield* ctrl.stream;
   }
 
   Future<void> _refreshDocs(String userId) async {
     final ctrl = _docCtrls[userId];
     if (ctrl == null) return;
-    if (await _useApi()) {
-      try {
-        final raw = await _api.get(
-          '/app/templates.php',
-          query: {'type': 'document'},
-        );
-        if (!ctrl.isClosed) ctrl.add(_parseDocs(raw));
-      } catch (e) {
-        if (!ctrl.isClosed) ctrl.addError(e);
+    try {
+      await _requireApi(forceRefresh: true);
+      final raw = await _getWithTimeout(
+        '/app/templates.php',
+        query: {'type': 'document'},
+      );
+      final parsed = _parseDocs(raw);
+      _docsCache['$userId|*'] = _TemplateCacheEntry(parsed);
+      if (!ctrl.isClosed) ctrl.add(parsed);
+    } catch (e) {
+      if (!ctrl.isClosed) {
+        ctrl.addError(e);
       }
-      return;
     }
-    final subKey = 'doc-$userId';
-    if (_fsSubs.containsKey(subKey)) return;
-    _fsSubs[subKey] = _col(userId).orderBy('name').snapshots().listen(
-      (snap) {
-        if (ctrl.isClosed) return;
-        ctrl.add(
-          snap.docs
-              .map((d) => DocumentTemplate.fromMap(d.id, d.data()))
-              .toList(),
-        );
-      },
-      onError: (Object e) {
-        if (!ctrl.isClosed) ctrl.addError(e);
-      },
-    );
   }
 
   Future<void> save(String userId, DocumentTemplate t) async {
-    if (await _useApi()) {
-      await _api.post('/app/templates.php?type=document', {
-        'id': t.id,
-        'name': t.name,
-        'category': t.category,
-        'backgroundImageUrl': t.backgroundImageUrl,
-        'elements': t.elements.map((e) => e.toMap()).toList(),
-        'customFields': t.customFields.map((f) => f.toMap()).toList(),
-      });
-      await _refreshDocs(userId);
-      return;
-    }
-    await _col(userId).doc(t.id).set({
-      ...t.toMap(),
-      'updatedAt': FieldValue.serverTimestamp(),
-      'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    await _requireApi();
+    await _postWithTimeout('/app/templates.php?type=document', {
+      'id': t.id,
+      'name': t.name,
+      'category': t.category,
+      'backgroundImageUrl': t.backgroundImageUrl,
+      'elements': t.elements.map((e) => e.toMap()).toList(),
+      'customFields': t.customFields.map((f) => f.toMap()).toList(),
+    });
+    _invalidateDocCache(userId);
+    await _refreshDocs(userId);
   }
 
   Future<void> delete(String userId, String templateId) async {
-    if (await _useApi()) {
-      await _api.delete(
-        '/app/templates.php',
-        query: {'type': 'document', 'id': templateId},
-      );
-      await _refreshDocs(userId);
-      return;
-    }
-    await _col(userId).doc(templateId).delete();
+    await _requireApi();
+    await _deleteWithTimeout(
+      '/app/templates.php',
+      query: {'type': 'document', 'id': templateId},
+    );
+    _invalidateDocCache(userId);
+    await _refreshDocs(userId);
   }
 
   Future<List<DocumentTemplate>> getTemplates(
     String userId, {
     String? category,
+    bool forceRefresh = false,
   }) async {
-    if (await _useApi()) {
-      final raw = await _api.get(
-        '/app/templates.php',
-        query: {
-          'type': 'document',
-          if (category != null) 'category': category,
-        },
-      );
-      return _parseDocs(raw);
+    await _requireApi(forceRefresh: forceRefresh);
+    final cacheKey = '$userId|${category ?? '*'}';
+    final cached = _docsCache[cacheKey];
+    if (!forceRefresh && cached != null && !cached.isExpired) {
+      return cached.value;
     }
-    Query<Map<String, dynamic>> query = _col(userId);
-    if (category != null) {
-      query = query.where('category', isEqualTo: category);
-    }
-    final snap = await query.get();
-    final list =
-        snap.docs.map((d) => DocumentTemplate.fromMap(d.id, d.data())).toList()
-          ..sort((a, b) => a.name.compareTo(b.name));
-    return list;
+    final raw = await _getWithTimeout(
+      '/app/templates.php',
+      query: {
+        'type': 'document',
+        if (category case final value?) 'category': value,
+      },
+    );
+    final parsed = _parseDocs(raw);
+    _docsCache[cacheKey] = _TemplateCacheEntry(parsed);
+    return parsed;
   }
-
-  // ── Scelta template per documento ─────────────────────────────────────────
 
   Future<void> setDocTemplateChoice(
     String userId,
@@ -185,120 +175,110 @@ class TemplateRepository {
     String? templateId,
   ) async {
     if (docId.isEmpty) return;
-    if (await _useApi()) {
-      await _api.put('/app/templates.php', {
-        'choice': docId,
-        'templateId': templateId ?? '',
-      });
-      return;
-    }
-    if (templateId == null || templateId.isEmpty) {
-      await _choiceCol(userId).doc(docId).delete();
-    } else {
-      await _choiceCol(userId).doc(docId).set({
-        'templateId': templateId,
-        'updatedAt': FieldValue.serverTimestamp(),
-      });
-    }
+    await _requireApi();
+    await _putWithTimeout('/app/templates.php', {
+      'choice': docId,
+      'templateId': templateId ?? '',
+    });
   }
 
   Future<String?> getDocTemplateChoice(String userId, String docId) async {
     if (docId.isEmpty) return null;
-    if (await _useApi()) {
-      final raw = await _api.get(
-        '/app/templates.php',
-        query: {'choice': docId},
-      );
-      final value = raw is Map ? raw['templateId'] : null;
-      final id = value?.toString().trim() ?? '';
-      return id.isEmpty ? null : id;
-    }
-    final doc = await _choiceCol(userId).doc(docId).get();
-    return (doc.data()?['templateId'] as String?)?.trim();
+    await _requireApi();
+    final raw = await _getWithTimeout(
+      '/app/templates.php',
+      query: {'choice': docId},
+    );
+    final value = raw is Map ? raw['templateId'] : null;
+    final id = value?.toString().trim() ?? '';
+    return id.isEmpty ? null : id;
   }
 
-  // ── Template email ─────────────────────────────────────────────────────────
-
-  Stream<List<EmailTemplate>> watchEmailTemplates(String userId) {
+  Stream<List<EmailTemplate>> watchEmailTemplates(String userId) async* {
     final created = !_emailCtrls.containsKey(userId);
     final ctrl = _emailCtrls.putIfAbsent(
       userId,
       () => StreamController<List<EmailTemplate>>.broadcast(),
     );
-    if (created) unawaited(_refreshEmails(userId));
-    return ctrl.stream;
+    yield _emailsCache[userId]?.value ?? const <EmailTemplate>[];
+    if (created) {
+      unawaited(_refreshEmails(userId));
+    }
+    yield* ctrl.stream;
   }
 
   Future<void> _refreshEmails(String userId) async {
     final ctrl = _emailCtrls[userId];
     if (ctrl == null) return;
-    if (await _useApi()) {
-      try {
-        final raw = await _api.get(
-          '/app/templates.php',
-          query: {'type': 'email'},
-        );
-        if (!ctrl.isClosed) ctrl.add(_parseEmails(raw));
-      } catch (e) {
-        if (!ctrl.isClosed) ctrl.addError(e);
-      }
-      return;
-    }
-    final subKey = 'email-$userId';
-    if (_fsSubs.containsKey(subKey)) return;
-    _fsSubs[subKey] = _emailCol(userId).orderBy('name').snapshots().listen(
-      (snap) {
-        if (ctrl.isClosed) return;
-        ctrl.add(
-          snap.docs.map((d) => EmailTemplate.fromMap(d.id, d.data())).toList(),
-        );
-      },
-      onError: (Object e) {
-        if (!ctrl.isClosed) ctrl.addError(e);
-      },
-    );
-  }
-
-  Future<List<EmailTemplate>> getEmailTemplates(String userId) async {
-    if (await _useApi()) {
-      final raw = await _api.get(
+    try {
+      await _requireApi(forceRefresh: true);
+      final raw = await _getWithTimeout(
         '/app/templates.php',
         query: {'type': 'email'},
       );
-      return _parseEmails(raw);
+      final parsed = _parseEmails(raw);
+      _emailsCache[userId] = _TemplateCacheEntry(parsed);
+      if (!ctrl.isClosed) ctrl.add(parsed);
+    } catch (e) {
+      if (!ctrl.isClosed) {
+        ctrl.addError(e);
+      }
     }
-    final snap = await _emailCol(userId).orderBy('name').get();
-    return snap.docs.map((d) => EmailTemplate.fromMap(d.id, d.data())).toList();
+  }
+
+  Future<List<EmailTemplate>> getEmailTemplates(String userId) async {
+    await _requireApi();
+    final cached = _emailsCache[userId];
+    if (cached != null && !cached.isExpired) {
+      return cached.value;
+    }
+    final raw = await _getWithTimeout(
+      '/app/templates.php',
+      query: {'type': 'email'},
+    );
+    final parsed = _parseEmails(raw);
+    _emailsCache[userId] = _TemplateCacheEntry(parsed);
+    return parsed;
   }
 
   Future<void> saveEmailTemplate(String userId, EmailTemplate t) async {
-    if (await _useApi()) {
-      await _api.post('/app/templates.php?type=email', {
-        'id': t.id,
-        'name': t.name,
-        'category': t.category,
-        'subject': t.subject,
-        'body': t.body,
-      });
-      await _refreshEmails(userId);
-      return;
-    }
-    await _emailCol(userId).doc(t.id).set({
-      ...t.toMap(),
-      'updatedAt': FieldValue.serverTimestamp(),
-      'createdAt': FieldValue.serverTimestamp(),
-    }, SetOptions(merge: true));
+    await _requireApi();
+    await _postWithTimeout('/app/templates.php?type=email', {
+      'id': t.id,
+      'name': t.name,
+      'category': t.category,
+      'subject': t.subject,
+      'body': t.body,
+    });
+    _invalidateEmailCache(userId);
+    await _refreshEmails(userId);
   }
 
   Future<void> deleteEmailTemplate(String userId, String id) async {
-    if (await _useApi()) {
-      await _api.delete(
-        '/app/templates.php',
-        query: {'type': 'email', 'id': id},
-      );
-      await _refreshEmails(userId);
-      return;
-    }
-    await _emailCol(userId).doc(id).delete();
+    await _requireApi();
+    await _deleteWithTimeout(
+      '/app/templates.php',
+      query: {'type': 'email', 'id': id},
+    );
+    _invalidateEmailCache(userId);
+    await _refreshEmails(userId);
   }
+
+  void _invalidateDocCache(String userId) {
+    _docsCache.removeWhere((key, _) => key.startsWith('$userId|'));
+  }
+
+  void _invalidateEmailCache(String userId) {
+    _emailsCache.remove(userId);
+  }
+}
+
+class _TemplateCacheEntry<T> {
+  _TemplateCacheEntry(this.value) : createdAt = DateTime.now();
+
+  final T value;
+  final DateTime createdAt;
+
+  bool get isExpired =>
+      DateTime.now().difference(createdAt) > TemplateRepository._cacheTtl;
 }

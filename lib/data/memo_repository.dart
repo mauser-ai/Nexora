@@ -3,7 +3,8 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'api_client.dart';
-import '../gussoni/screens/memo_screen.dart' show MemoEl, MemoStroke, MemoArrow, MemoElementKind;
+import '../gussoni/screens/memo_screen.dart'
+    show MemoEl, MemoStroke, MemoArrow, MemoElementKind;
 import 'package:flutter/material.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -19,8 +20,8 @@ class MemoBoard {
     required this.createdByName,
     this.updatedAt,
     this.elements = const [],
-    this.strokes  = const [],
-    this.arrows   = const [],
+    this.strokes = const [],
+    this.arrows = const [],
   });
 
   final String id;
@@ -29,41 +30,46 @@ class MemoBoard {
   final String createdBy;
   final String createdByName;
   final DateTime? updatedAt;
-  final List<MemoEl>     elements;
+  final List<MemoEl> elements;
   final List<MemoStroke> strokes;
-  final List<MemoArrow>  arrows;
+  final List<MemoArrow> arrows;
 
   MemoBoard copyWith({
-    String? title, List<MemoEl>? elements,
-    List<MemoStroke>? strokes, List<MemoArrow>? arrows,
+    String? title,
+    List<MemoEl>? elements,
+    List<MemoStroke>? strokes,
+    List<MemoArrow>? arrows,
     DateTime? updatedAt,
   }) => MemoBoard(
-    id: id, title: title ?? this.title,
-    createdAt: createdAt, createdBy: createdBy, createdByName: createdByName,
+    id: id,
+    title: title ?? this.title,
+    createdAt: createdAt,
+    createdBy: createdBy,
+    createdByName: createdByName,
     updatedAt: updatedAt ?? this.updatedAt,
     elements: elements ?? this.elements,
-    strokes: strokes  ?? this.strokes,
-    arrows:  arrows   ?? this.arrows,
+    strokes: strokes ?? this.strokes,
+    arrows: arrows ?? this.arrows,
   );
 
   Map<String, dynamic> toMap() => {
-    'title':         title,
-    'createdAt':     Timestamp.fromDate(createdAt),
-    'createdBy':     createdBy,
+    'title': title,
+    'createdAt': Timestamp.fromDate(createdAt),
+    'createdBy': createdBy,
     'createdByName': createdByName,
-    'updatedAt':     FieldValue.serverTimestamp(),
-    'elements':      elements.map(_elToMap).toList(),
-    'strokes':       strokes.map(_strokeToMap).toList(),
-    'arrows':        arrows.map(_arrowToMap).toList(),
+    'updatedAt': FieldValue.serverTimestamp(),
+    'elements': elements.map(_elToMap).toList(),
+    'strokes': strokes.map(_strokeToMap).toList(),
+    'arrows': arrows.map(_arrowToMap).toList(),
   };
 
   factory MemoBoard.fromMap(String id, Map<String, dynamic> m) => MemoBoard(
-    id:             id,
-    title:          m['title'] as String? ?? 'Memo',
-    createdAt:      _parseDate(m['createdAt']),
-    createdBy:      m['createdBy'] as String? ?? '',
-    createdByName:  m['createdByName'] as String? ?? '',
-    updatedAt:      m['updatedAt'] != null ? _parseDate(m['updatedAt']) : null,
+    id: id,
+    title: m['title'] as String? ?? 'Memo',
+    createdAt: _parseDate(m['createdAt']),
+    createdBy: m['createdBy'] as String? ?? '',
+    createdByName: m['createdByName'] as String? ?? '',
+    updatedAt: m['updatedAt'] != null ? _parseDate(m['updatedAt']) : null,
     elements: (m['elements'] as List<dynamic>? ?? [])
         .map((e) => _elFromMap(Map<String, dynamic>.from(e as Map)))
         .toList(),
@@ -86,26 +92,33 @@ DateTime _parseDate(dynamic v) {
 }
 
 Map<String, dynamic> _elToMap(MemoEl e) => {
-  'id': e.id, 'kind': e.kind.name,
-  'x': e.x, 'y': e.y, 'w': e.w, 'h': e.h,
+  'id': e.id,
+  'kind': e.kind.name,
+  'x': e.x,
+  'y': e.y,
+  'w': e.w,
+  'h': e.h,
   'content': e.content,
   'fill': e.fill.toARGB32(),
   'textColor': e.textColor.toARGB32(),
-  'fontSize': e.fontSize, 'bold': e.bold,
+  'fontSize': e.fontSize,
+  'bold': e.bold,
   'rotation': e.rotation,
 };
 
 MemoEl _elFromMap(Map<String, dynamic> m) => MemoEl(
-  id:   m['id'] as String,
+  id: m['id'] as String,
   kind: MemoElementKind.values.byName(m['kind'] as String),
-  x: (m['x'] as num).toDouble(), y: (m['y'] as num).toDouble(),
-  w: (m['w'] as num).toDouble(), h: (m['h'] as num).toDouble(),
-  content:   m['content'] as String? ?? '',
-  fill:      Color(m['fill'] as int),
+  x: (m['x'] as num).toDouble(),
+  y: (m['y'] as num).toDouble(),
+  w: (m['w'] as num).toDouble(),
+  h: (m['h'] as num).toDouble(),
+  content: m['content'] as String? ?? '',
+  fill: Color(m['fill'] as int),
   textColor: Color(m['textColor'] as int),
-  fontSize:  (m['fontSize'] as num).toDouble(),
-  bold:      m['bold'] as bool? ?? false,
-  rotation:  (m['rotation'] as num? ?? 0).toDouble(),
+  fontSize: (m['fontSize'] as num).toDouble(),
+  bold: m['bold'] as bool? ?? false,
+  rotation: (m['rotation'] as num? ?? 0).toDouble(),
 );
 
 Map<String, dynamic> _strokeToMap(MemoStroke s) => {
@@ -116,8 +129,8 @@ Map<String, dynamic> _strokeToMap(MemoStroke s) => {
 };
 
 MemoStroke _strokeFromMap(Map<String, dynamic> m) => MemoStroke(
-  id:    m['id'] as String,
-  pts:   (m['pts'] as List).map((p) {
+  id: m['id'] as String,
+  pts: (m['pts'] as List).map((p) {
     final pp = p as Map;
     return Offset((pp['x'] as num).toDouble(), (pp['y'] as num).toDouble());
   }).toList(),
@@ -127,15 +140,17 @@ MemoStroke _strokeFromMap(Map<String, dynamic> m) => MemoStroke(
 
 Map<String, dynamic> _arrowToMap(MemoArrow a) => {
   'id': a.id,
-  'sx': a.start.dx, 'sy': a.start.dy,
-  'ex': a.end.dx,   'ey': a.end.dy,
+  'sx': a.start.dx,
+  'sy': a.start.dy,
+  'ex': a.end.dx,
+  'ey': a.end.dy,
   'color': a.color.toARGB32(),
 };
 
 MemoArrow _arrowFromMap(Map<String, dynamic> m) => MemoArrow(
-  id:    m['id'] as String,
+  id: m['id'] as String,
   start: Offset((m['sx'] as num).toDouble(), (m['sy'] as num).toDouble()),
-  end:   Offset((m['ex'] as num).toDouble(), (m['ey'] as num).toDouble()),
+  end: Offset((m['ex'] as num).toDouble(), (m['ey'] as num).toDouble()),
   color: Color(m['color'] as int),
 );
 
@@ -166,7 +181,12 @@ class FirestoreMemoRepository {
       final raw = await _api.get('/app/memos.php', query: {'scope': teamId});
       _apiMode = raw is Map && raw['memos'] is List;
     } catch (_) {
-      _apiMode = false;
+      throw ApiException(
+        'API memo MySQL non disponibile. Installa/carica /api/app/install.php e /api/app/memos.php.',
+      );
+    }
+    if (_apiMode != true) {
+      throw ApiException('Risposta API memo MySQL non valida.');
     }
     return _apiMode!;
   }
@@ -243,11 +263,15 @@ class FirestoreMemoRepository {
       return ((raw is Map ? raw['id'] : null) ?? '').toString();
     }
     final ref = _col(teamId).doc();
-    await ref.set(MemoBoard(
-      id: ref.id, title: title,
-      createdAt: DateTime.now(),
-      createdBy: userId, createdByName: userName,
-    ).toMap());
+    await ref.set(
+      MemoBoard(
+        id: ref.id,
+        title: title,
+        createdAt: DateTime.now(),
+        createdBy: userId,
+        createdByName: userName,
+      ).toMap(),
+    );
     return ref.id;
   }
 
@@ -277,9 +301,10 @@ class FirestoreMemoRepository {
       }
       return;
     }
-    await _col(teamId).doc(boardId).update(
-      {'title': title, 'updatedAt': FieldValue.serverTimestamp()},
-    );
+    await _col(teamId).doc(boardId).update({
+      'title': title,
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
   }
 
   Future<void> deleteBoard(String teamId, String boardId) async {
@@ -307,12 +332,11 @@ class FirestoreMemoRepository {
         if (await _useApi(teamId)) {
           await _refreshApi(teamId);
           // Refresh periodico: surrogato del realtime per la collaborazione.
-          _pollTimers[teamId] = Timer.periodic(
-            const Duration(seconds: 20),
-            (_) {
-              if (ctrl.hasListener) unawaited(_refreshApi(teamId));
-            },
-          );
+          _pollTimers[teamId] = Timer.periodic(const Duration(seconds: 20), (
+            _,
+          ) {
+            if (ctrl.hasListener) unawaited(_refreshApi(teamId));
+          });
           return;
         }
         _col(teamId)
@@ -322,9 +346,7 @@ class FirestoreMemoRepository {
               (s) {
                 if (ctrl.isClosed) return;
                 ctrl.add(
-                  s.docs
-                      .map((d) => MemoBoard.fromMap(d.id, d.data()))
-                      .toList(),
+                  s.docs.map((d) => MemoBoard.fromMap(d.id, d.data())).toList(),
                 );
               },
               onError: (Object e) {

@@ -22,11 +22,13 @@ import '../data/api_client.dart';
 import '../data/api_workspace_repository.dart';
 import '../data/template_repository.dart';
 import '../data/team_repository.dart';
+import '../models/custom_field_models.dart';
 import '../models/domain_models.dart';
 import '../models/roles.dart';
 import '../models/template_models.dart';
 import '../services/archive_integrations.dart';
 import '../services/asset_upload_service.dart';
+import '../services/user_profile_service.dart';
 import 'template_builder_page.dart';
 
 // ─── Main settings container ──────────────────────────────────────────────────
@@ -46,7 +48,12 @@ class SettingsPageContent extends StatefulWidget {
     required this.onCreateVacation,
     required this.onDeleteVacation,
     required this.onOpenCreateUserDialog,
+    this.integrationsEnabled = true,
+    this.brandingEnabled = false,
     this.onRemoveTeamMember,
+    this.onBrandingChanged,
+    this.onCustomFieldsChanged,
+    this.onTeamRolesChanged,
   });
 
   final WorkspaceSnapshot workspace;
@@ -61,7 +68,14 @@ class SettingsPageContent extends StatefulWidget {
   final Future<void> Function(VacationPeriod) onCreateVacation;
   final Future<void> Function(VacationPeriod) onDeleteVacation;
   final VoidCallback onOpenCreateUserDialog;
+  final bool integrationsEnabled;
+  final bool brandingEnabled;
   final Future<void> Function(String memberId)? onRemoveTeamMember;
+  final void Function({String? brandLogoUrl, String? brandColor})?
+  onBrandingChanged;
+  final void Function(List<TeamCustomFieldDefinition> definitions)?
+  onCustomFieldsChanged;
+  final void Function(List<String> roles)? onTeamRolesChanged;
 
   @override
   State<SettingsPageContent> createState() => _SettingsPageContentState();
@@ -80,48 +94,69 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
     final base = [
       'Profilo',
       'Aspetto',
-      'Integrazioni',
+      if (widget.integrationsEnabled) 'Integrazioni',
       'Disponibilità',
       'Template',
+      'Custom field',
     ];
-    if (_isOwner) {
+    if (widget.brandingEnabled) {
       base.add('Branding');
+    }
+    if (_isOwner) {
+      base.add('Ruoli');
       base.add('Team');
     }
     return base;
   }
 
-  static const List<IconData> _baseTabIcons = [
-    Icons.person_rounded,
-    Icons.imagesearch_roller_rounded,
-    Icons.hub_rounded,
-    Icons.calendar_month_rounded,
-    Icons.description_rounded,
-    Icons.palette_rounded,
-    Icons.groups_rounded,
-  ];
+  IconData _tabIcon(String tab) => switch (tab) {
+    'Profilo' => Icons.person_rounded,
+    'Aspetto' => Icons.imagesearch_roller_rounded,
+    'Integrazioni' => Icons.hub_rounded,
+    'Disponibilità' => Icons.calendar_month_rounded,
+    'Template' => Icons.description_rounded,
+    'Custom field' => Icons.tune_rounded,
+    'Ruoli' => Icons.badge_rounded,
+    'Branding' => Icons.palette_rounded,
+    'Team' => Icons.groups_rounded,
+    _ => Icons.settings_rounded,
+  };
 
-  static const List<Color> _tabColors = [
-    Color(0xFF8B5E34), // Profilo
-    Color(0xFF54595F), // Aspetto
-    Color(0xFF4A6B8A), // Integrazioni
-    Color(0xFFB05A3C), // Disponibilità
-    Color(0xFFB97D10), // Template
-    Color(0xFF7E3B4F), // Branding
-    Color(0xFF4F6D7A), // Team
-  ];
+  Color _tabColor(String tab) => switch (tab) {
+    'Profilo' => GussoniBrand.primary,
+    'Aspetto' => GussoniBrand.textSecondary,
+    'Integrazioni' => GussoniBrand.info,
+    'Disponibilità' => GussoniBrand.success,
+    'Template' => GussoniBrand.accent,
+    'Custom field' => GussoniBrand.primary,
+    'Ruoli' => GussoniBrand.info,
+    'Branding' => GussoniBrand.primaryDark,
+    'Team' => GussoniBrand.textPrimary,
+    _ => GussoniBrand.primary,
+  };
 
-  static const List<String> _tabSubtitles = [
-    'Account, fatturazione e firma email',
-    'Tema, colori e wallpaper',
-    'Archiviazione e fatturazione',
-    'Orari, ferie e calendario',
-    'Email e template progetto',
-    'Logo e colori del brand',
-    'Collaboratori e piano abbonamento',
-  ];
+  String _tabSubtitle(String tab) => switch (tab) {
+    'Profilo' => 'Account, fatturazione e firma email',
+    'Aspetto' => 'Tema, colori e wallpaper',
+    'Integrazioni' => 'Archiviazione e fatturazione',
+    'Disponibilità' => 'Orari, ferie e calendario',
+    'Template' => 'Email e template progetto',
+    'Custom field' => 'Campi dinamici per i moduli',
+    'Ruoli' => 'Ruoli personalizzati del team',
+    'Branding' => 'Logo e colori del brand',
+    'Team' => 'Collaboratori e piano abbonamento',
+    _ => 'Preferenze Nexora OS',
+  };
 
   final _templateRepo = TemplateRepository();
+
+  void _normalizeTabIndex(List<String> tabs) {
+    if (tabs.isEmpty) return;
+    if (_tab >= tabs.length) _tab = tabs.length - 1;
+    if (_mobileSelectedTab != null && _mobileSelectedTab! >= tabs.length) {
+      _mobileSelectedTab = null;
+    }
+  }
 
   void _openMobileTab(int index) {
     setState(() {
@@ -183,6 +218,7 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
 
   Widget _buildMobileList() {
     final tabs = _tabs;
+    _normalizeTabIndex(tabs);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -190,15 +226,8 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
         Container(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.white.withValues(alpha: .70),
-                Colors.white.withValues(alpha: .40),
-              ],
-            ),
-            border: Border(
-              bottom: BorderSide(color: Colors.white.withValues(alpha: .60)),
-            ),
+            color: GussoniBrand.surface,
+            border: Border(bottom: BorderSide(color: GussoniBrand.border)),
           ),
           child: Row(
             children: [
@@ -207,9 +236,7 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
                 height: 38,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12),
-                  gradient: const LinearGradient(
-                    colors: [Color(0xFF2CE2CF), Color(0xFF6DA9FF)],
-                  ),
+                  color: GussoniBrand.primary,
                 ),
                 child: const Icon(
                   Icons.settings_rounded,
@@ -241,10 +268,10 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
                 _IosSettingsGroup(
                   children: [
                     _IosSettingsRow(
-                      icon: _baseTabIcons[0],
-                      color: _tabColors[0],
+                      icon: _tabIcon(tabs[0]),
+                      color: _tabColor(tabs[0]),
                       label: tabs[0],
-                      subtitle: _tabSubtitles[0],
+                      subtitle: _tabSubtitle(tabs[0]),
                       onTap: () => _openMobileTab(0),
                     ),
                   ],
@@ -267,10 +294,10 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
                   children: [
                     for (int i = 1; i < tabs.length.clamp(0, 6); i++)
                       _IosSettingsRow(
-                        icon: _baseTabIcons[i],
-                        color: _tabColors[i],
+                        icon: _tabIcon(tabs[i]),
+                        color: _tabColor(tabs[i]),
                         label: tabs[i],
-                        subtitle: _tabSubtitles[i],
+                        subtitle: _tabSubtitle(tabs[i]),
                         onTap: () => _openMobileTab(i),
                         isLast: i == tabs.length.clamp(0, 6) - 1,
                       ),
@@ -294,10 +321,10 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
                     children: [
                       for (int i = 6; i < tabs.length; i++)
                         _IosSettingsRow(
-                          icon: _baseTabIcons[i],
-                          color: _tabColors[i],
+                          icon: _tabIcon(tabs[i]),
+                          color: _tabColor(tabs[i]),
                           label: tabs[i],
-                          subtitle: _tabSubtitles[i],
+                          subtitle: _tabSubtitle(tabs[i]),
                           onTap: () => _openMobileTab(i),
                           isLast: i == tabs.length - 1,
                         ),
@@ -321,15 +348,8 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
         Container(
           padding: const EdgeInsets.fromLTRB(6, 14, 20, 14),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                Colors.white.withValues(alpha: .70),
-                Colors.white.withValues(alpha: .40),
-              ],
-            ),
-            border: Border(
-              bottom: BorderSide(color: Colors.white.withValues(alpha: .60)),
-            ),
+            color: GussoniBrand.surface,
+            border: Border(bottom: BorderSide(color: GussoniBrand.border)),
           ),
           child: Row(
             children: [
@@ -419,18 +439,28 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
 
   Widget _buildDesktopLayout() {
     final tabs = _tabs;
+    _normalizeTabIndex(tabs);
     return Container(
-      decoration: GussoniBrand.glassPanel(radius: 28, opacity: .82),
+      decoration: BoxDecoration(
+        color: GussoniBrand.surface,
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: GussoniBrand.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1202332A),
+            blurRadius: 24,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
       child: Row(
         children: [
           Container(
             width: 250,
             padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
             decoration: BoxDecoration(
-              color: const Color(0xFF07111D).withValues(alpha: .07),
-              border: Border(
-                right: BorderSide(color: Colors.white.withValues(alpha: .42)),
-              ),
+              color: GussoniBrand.surface,
+              border: Border(right: BorderSide(color: GussoniBrand.border)),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -444,9 +474,7 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
                         height: 42,
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(15),
-                          gradient: const LinearGradient(
-                            colors: [Color(0xFF2CE2CF), Color(0xFF6DA9FF)],
-                          ),
+                          color: GussoniBrand.primary,
                         ),
                         child: const Icon(
                           Icons.settings_rounded,
@@ -477,7 +505,7 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
                       final selected = _tab == i;
                       return _SettingsSidebarItem(
                         label: tabs[i],
-                        icon: _baseTabIcons[i],
+                        icon: _tabIcon(tabs[i]),
                         selected: selected,
                         onTap: () => setState(() => _tab = i),
                       );
@@ -574,6 +602,7 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
       case 'Integrazioni':
         return _IntegrationsTab(
           userId: widget.userId,
+          teamInfo: widget.teamInfo,
           youdoxConfig: widget.workspace.youdoxConfig,
           onUpdateYoudoxConfig: widget.onUpdateYoudoxConfig,
         );
@@ -591,8 +620,24 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
           youdoxConfig: widget.workspace.youdoxConfig,
           onUpdateYoudoxConfig: widget.onUpdateYoudoxConfig,
         );
+      case 'Custom field':
+        return _CustomFieldsTab(
+          userId: widget.userId,
+          teamInfo: widget.teamInfo,
+          onCustomFieldsChanged: widget.onCustomFieldsChanged,
+        );
+      case 'Ruoli':
+        return _RolesTab(
+          userId: widget.userId,
+          teamInfo: widget.teamInfo,
+          onTeamRolesChanged: widget.onTeamRolesChanged,
+        );
       case 'Branding':
-        return _BrandingTab(userId: widget.userId, teamInfo: widget.teamInfo!);
+        return _BrandingTab(
+          userId: widget.userId,
+          teamInfo: widget.teamInfo!,
+          onBrandingChanged: widget.onBrandingChanged,
+        );
       case 'Team':
         return _PianoTeamTab(
           userId: widget.userId,
@@ -609,11 +654,13 @@ class _SettingsPageContentState extends State<SettingsPageContent> {
 class _IntegrationsTab extends StatefulWidget {
   const _IntegrationsTab({
     required this.userId,
+    required this.teamInfo,
     required this.youdoxConfig,
     required this.onUpdateYoudoxConfig,
   });
 
   final String userId;
+  final TeamInfo? teamInfo;
   final YouDoxConfig youdoxConfig;
   final Future<void> Function(YouDoxConfig) onUpdateYoudoxConfig;
 
@@ -1088,7 +1135,8 @@ const List<_IntegrationSpec> _integrationSpecs = [
       _IntegrationField(
         'webhookUrl',
         'Webhook URL',
-        hint: 'Da Teams: canale → Workflow → "Post to a channel when a webhook request is received"',
+        hint:
+            'Da Teams: canale → Workflow → "Post to a channel when a webhook request is received"',
       ),
     ],
     help:
@@ -1202,6 +1250,7 @@ const List<_IntegrationSpec> _integrationSpecs = [
 
 class _IntegrationsTabState extends State<_IntegrationsTab> {
   ArchiveIntegrationsState _archiveState = archiveIntegrationsController.state;
+  final _profileService = UserProfileService();
   Map<String, Map<String, dynamic>> _stored = {};
   bool _loading = true;
 
@@ -1226,23 +1275,10 @@ class _IntegrationsTabState extends State<_IntegrationsTab> {
 
   Future<void> _loadStored() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.userId)
-          .get();
-      final raw = doc.data()?['integrations'];
+      final raw = await _profileService.loadIntegrations(widget.userId);
       if (!mounted) return;
       setState(() {
-        _stored = raw is Map
-            ? raw.map(
-                (k, v) => MapEntry(
-                  k.toString(),
-                  v is Map
-                      ? Map<String, dynamic>.from(v)
-                      : <String, dynamic>{},
-                ),
-              )
-            : {};
+        _stored = raw;
         _loading = false;
       });
     } catch (_) {
@@ -1251,25 +1287,13 @@ class _IntegrationsTabState extends State<_IntegrationsTab> {
   }
 
   Future<void> _saveStored(String key, Map<String, String> values) async {
-    await FirebaseFirestore.instance.collection('users').doc(widget.userId).set(
-      {
-        'integrations': {
-          key: {...values, 'updatedAt': FieldValue.serverTimestamp()},
-        },
-      },
-      SetOptions(merge: true),
-    );
+    await _profileService.saveIntegration(widget.userId, key, values);
     if (!mounted) return;
     setState(() => _stored[key] = Map<String, dynamic>.from(values));
   }
 
   Future<void> _removeStored(String key) async {
-    await FirebaseFirestore.instance.collection('users').doc(widget.userId).set(
-      {
-        'integrations': {key: FieldValue.delete()},
-      },
-      SetOptions(merge: true),
-    );
+    await _profileService.removeIntegration(widget.userId, key);
     if (!mounted) return;
     setState(() => _stored.remove(key));
   }
@@ -1440,10 +1464,10 @@ class _IntegrationsTabState extends State<_IntegrationsTab> {
         ),
       );
     }
-
-    for (final spec in _integrationSpecs.where(
-      (s) => s.category == category,
-    )) {
+    for (final spec in _integrationSpecs.where((s) => s.category == category)) {
+      if (spec.key == 'stripe') {
+        continue;
+      }
       final configured = spec.key == 'dropbox'
           ? (_archiveState.dropboxConnected && _isConfigured(spec))
           : _isConfigured(spec);
@@ -1477,8 +1501,7 @@ class _IntegrationsTabState extends State<_IntegrationsTab> {
         const _SettingsSectionTitle(
           title: 'Integrazioni',
           subtitle:
-              'Collega i servizi esterni che usi in studio, divisi per categoria. '
-              'Le credenziali restano associate al tuo account.',
+              'Collega i servizi esterni che usi in studio. Le credenziali restano associate al tuo account.',
         ),
         const SizedBox(height: 18),
         for (final (label, icon) in _integrationCategories) ...[
@@ -1534,7 +1557,10 @@ class _IntegrationCard extends StatelessWidget {
     required this.onConnect,
     required this.onDisconnect,
     this.onEdit,
+    this.editLabel = 'Modifica',
     this.connectLabel = 'Collega',
+    this.actionsEnabled = true,
+    this.statusLabel,
   });
 
   final String name;
@@ -1543,6 +1569,9 @@ class _IntegrationCard extends StatelessWidget {
   final Color color;
   final bool connected;
   final String connectLabel;
+  final String editLabel;
+  final bool actionsEnabled;
+  final String? statusLabel;
   final VoidCallback onConnect;
   final VoidCallback onDisconnect;
   final VoidCallback? onEdit;
@@ -1595,7 +1624,8 @@ class _IntegrationCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        connected ? 'Collegato' : 'Non collegato',
+                        statusLabel ??
+                            (connected ? 'Collegato' : 'Non collegato'),
                         style: TextStyle(
                           fontSize: 10.5,
                           fontWeight: FontWeight.w700,
@@ -1621,25 +1651,27 @@ class _IntegrationCard extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           if (connected) ...[
-            if (onEdit != null)
+            if (actionsEnabled && onEdit != null)
               OutlinedButton.icon(
                 onPressed: onEdit,
                 icon: const Icon(Icons.tune_rounded, size: 15),
-                label: const Text('Modifica'),
+                label: Text(editLabel),
               ),
-            const SizedBox(width: 8),
-            IconButton(
-              tooltip: 'Scollega',
-              onPressed: onDisconnect,
-              icon: const Icon(
-                Icons.link_off_rounded,
-                size: 18,
-                color: GussoniBrand.textMuted,
+            if (actionsEnabled) ...[
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Scollega',
+                onPressed: onDisconnect,
+                icon: const Icon(
+                  Icons.link_off_rounded,
+                  size: 18,
+                  color: GussoniBrand.textMuted,
+                ),
               ),
-            ),
+            ],
           ] else
             FilledButton.icon(
-              onPressed: onConnect,
+              onPressed: actionsEnabled ? onConnect : null,
               icon: const Icon(Icons.link_rounded, size: 16),
               label: Text(connectLabel),
             ),
@@ -1904,14 +1936,14 @@ class _IosSettingsGroup extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: .72),
+        color: GussoniBrand.surface,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withValues(alpha: .70)),
-        boxShadow: [
+        border: Border.all(color: GussoniBrand.border.withValues(alpha: .92)),
+        boxShadow: const [
           BoxShadow(
-            color: Colors.black.withValues(alpha: .04),
-            blurRadius: 8,
-            offset: const Offset(0, 3),
+            color: Color(0x0F02332A),
+            blurRadius: 10,
+            offset: Offset(0, 4),
           ),
         ],
       ),
@@ -2037,17 +2069,10 @@ class _SettingsSidebarItem extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
-            gradient: selected
-                ? LinearGradient(
-                    colors: [
-                      Colors.white.withValues(alpha: .78),
-                      GussoniBrand.primary.withValues(alpha: .12),
-                    ],
-                  )
-                : null,
+            color: selected ? GussoniBrand.surface : Colors.transparent,
             border: Border.all(
               color: selected
-                  ? Colors.white.withValues(alpha: .76)
+                  ? GussoniBrand.primaryBorder.withValues(alpha: .72)
                   : Colors.transparent,
             ),
           ),
@@ -2111,7 +2136,18 @@ class _SectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
-      decoration: GussoniBrand.glassPanel(radius: 22, opacity: .88),
+      decoration: BoxDecoration(
+        color: GussoniBrand.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: GussoniBrand.border),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x1202332A),
+            blurRadius: 22,
+            offset: Offset(0, 10),
+          ),
+        ],
+      ),
       child: Padding(
         padding: const EdgeInsets.all(22),
         child: Column(
@@ -2178,18 +2214,18 @@ class _AppearanceTabState extends State<_AppearanceTab> {
   Color _accentColor = GussoniBrand.defaultPrimary;
 
   static const List<Color> _accentPresets = [
-    GussoniBrand.defaultPrimary, // Bordeaux Gussoni
-    Color(0xFF8B1A1A), // Rosso mattone
-    Color(0xFFB05A3C), // Terracotta
-    Color(0xFF946B2D), // Bronzo dorato
-    Color(0xFFB08948), // Oro
-    Color(0xFF5F7045), // Oliva
-    Color(0xFF3F6B5E), // Verde bosco
-    Color(0xFF486B6B), // Petrolio
-    Color(0xFF4A6B8A), // Blu ardesia
-    Color(0xFF6B5B95), // Viola spento
-    Color(0xFF7E3B4F), // Vinaccia
-    Color(0xFF1C1D1F), // Antracite
+    GussoniBrand.defaultPrimary,
+    GussoniBrand.accent,
+    Color(0xFF0A4D40),
+    Color(0xFF1F7A55),
+    Color(0xFF2E6F7E),
+    Color(0xFF406B5D),
+    Color(0xFF587A6B),
+    Color(0xFF7DA06E),
+    Color(0xFF31564F),
+    Color(0xFF6B847E),
+    Color(0xFF02231D),
+    const Color(0xFF1C1D1F),
   ];
 
   @override
@@ -2409,13 +2445,13 @@ class _AppearanceTabState extends State<_AppearanceTab> {
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(18),
                   border: Border.all(color: GussoniBrand.border),
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
                     colors: [
-                      Color(0xFFF8F3EC),
-                      Color(0xFFF0E9E1),
-                      Color(0xFFE6DCD0),
+                      GussoniBrand.glassSurfaceStrong,
+                      GussoniBrand.surfaceSubtle,
+                      GussoniBrand.primaryBg,
                     ],
                   ),
                 ),
@@ -2522,11 +2558,10 @@ class _ProfiloTabState extends State<_ProfiloTab> {
 
   Future<void> _loadProfile() async {
     try {
-      final doc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.userId)
-          .get();
-      final data = doc.data();
+      final data = await UserProfileService().fetchProfile(
+        widget.userId,
+        email: widget.userEmail,
+      );
       if (data != null && mounted) {
         setState(() {
           _avatarUrl = data['avatarUrl'] as String?;
@@ -2557,10 +2592,9 @@ class _ProfiloTabState extends State<_ProfiloTab> {
         filename: 'avatar.jpg',
         folder: 'avatar',
       );
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.userId)
-          .set({'avatarUrl': url}, SetOptions(merge: true));
+      await UserProfileService().updateProfile(widget.userId, {
+        'avatarUrl': url,
+      });
       if (mounted) setState(() => _avatarUrl = url);
     } catch (error) {
       if (mounted) {
@@ -2576,26 +2610,10 @@ class _ProfiloTabState extends State<_ProfiloTab> {
   Future<void> _saveProfile() async {
     setState(() => _saving = true);
     try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(widget.userId)
-          .set({
-            'displayName': _displayName.trim(),
-            if (_role.trim().isNotEmpty) 'role': _role.trim(),
-          }, SetOptions(merge: true));
-      // Aggiorna anche nel team member se esiste
-      final teamInfo = widget.teamInfo;
-      if (teamInfo != null) {
-        await FirebaseFirestore.instance
-            .collection('teams')
-            .doc(teamInfo.id)
-            .collection('members')
-            .doc(widget.userId)
-            .set({
-              'displayName': _displayName.trim(),
-              'role': _role.trim(),
-            }, SetOptions(merge: true));
-      }
+      await UserProfileService().updateProfile(widget.userId, {
+        'displayName': _displayName.trim(),
+        if (_role.trim().isNotEmpty) 'role': _role.trim(),
+      });
       if (mounted) {
         ScaffoldMessenger.of(
           context,
@@ -2758,23 +2776,37 @@ class _ProfiloTabState extends State<_ProfiloTab> {
                 ),
               ),
               const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                value:
-                    GussoniRoles.all.contains(
-                      _role.isNotEmpty ? _role : teamRole,
-                    )
-                    ? (_role.isNotEmpty ? _role : teamRole)
-                    : null,
-                hint: const Text('Seleziona ruolo'),
-                decoration: const InputDecoration(
-                  labelText: 'Ruolo',
-                  border: OutlineInputBorder(),
+              if (widget.teamInfo != null)
+                TextFormField(
+                  initialValue: teamRole.isNotEmpty
+                      ? teamRole
+                      : 'Non assegnato',
+                  enabled: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Ruolo team',
+                    border: OutlineInputBorder(),
+                    helperText:
+                        'Il ruolo viene assegnato dal titolare del team.',
+                  ),
+                )
+              else
+                DropdownButtonFormField<String>(
+                  value:
+                      GussoniRoles.all.contains(
+                        _role.isNotEmpty ? _role : teamRole,
+                      )
+                      ? (_role.isNotEmpty ? _role : teamRole)
+                      : null,
+                  hint: const Text('Seleziona ruolo'),
+                  decoration: const InputDecoration(
+                    labelText: 'Ruolo',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: GussoniRoles.all
+                      .map((r) => DropdownMenuItem(value: r, child: Text(r)))
+                      .toList(),
+                  onChanged: (v) => setState(() => _role = v ?? ''),
                 ),
-                items: GussoniRoles.all
-                    .map((r) => DropdownMenuItem(value: r, child: Text(r)))
-                    .toList(),
-                onChanged: (v) => setState(() => _role = v ?? ''),
-              ),
               const SizedBox(height: 16),
               Align(
                 alignment: Alignment.centerRight,
@@ -2924,9 +2956,13 @@ class _TemplateTabState extends State<_TemplateTab> {
 
   List<ProjectTemplate> get _projectTemplates {
     final templates = widget.youdoxConfig.projectTemplates
-        .where((template) => template.id != kStandardProjectTemplate.id)
+        .where(
+          (template) =>
+              template.id != kStandardProjectTemplate.id &&
+              template.isDefault != true,
+        )
         .toList();
-    return [kStandardProjectTemplate, ...templates];
+    return templates;
   }
 
   @override
@@ -3109,168 +3145,189 @@ class _TemplateTabState extends State<_TemplateTab> {
         icon: const Icon(Icons.add, size: 16),
         label: const Text('Nuovo template progetto'),
       ),
-      child: Column(
-        children: _projectTemplates.map((template) {
-          final taskCount = template.phases.fold<int>(
-            0,
-            (sum, phase) => sum + phase.tasks.length,
-          );
-          final isStandard = template.id == kStandardProjectTemplate.id;
-          return Container(
-            margin: const EdgeInsets.only(bottom: 10),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: GussoniBrand.surfaceSubtle,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: GussoniBrand.borderSubtle),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
+      child: _projectTemplates.isEmpty
+          ? Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: GussoniBrand.borderSubtle),
+              ),
+              child: const Column(
+                children: [
+                  Icon(
+                    Icons.account_tree_outlined,
+                    size: 34,
+                    color: GussoniBrand.textMuted,
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'Nessun template progetto disponibile.',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: GussoniBrand.textPrimary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    'Ogni team parte senza template predefiniti. Creane uno quando vuoi.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: GussoniBrand.textMuted,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            )
+          : Column(
+              children: _projectTemplates.map((template) {
+                final taskCount = template.phases.fold<int>(
+                  0,
+                  (sum, phase) => sum + phase.tasks.length,
+                );
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.all(14),
                   decoration: BoxDecoration(
-                    color: isStandard
-                        ? GussoniBrand.primaryBg
-                        : const Color(0xFFF0EDE8),
-                    borderRadius: BorderRadius.circular(10),
+                    color: GussoniBrand.surfaceSubtle,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: GussoniBrand.borderSubtle),
                   ),
-                  child: Icon(
-                    isStandard
-                        ? Icons.star_outline_rounded
-                        : Icons.account_tree_outlined,
-                    color: const Color(0xFF5B1205),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
+                  child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              template.name,
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: GussoniBrand.surfaceSubtle,
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          Icons.account_tree_outlined,
+                          color: GussoniBrand.primary,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    template.name,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF1C1D1F),
+                                    ),
+                                  ),
+                                ),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius: BorderRadius.circular(999),
+                                    border: Border.all(
+                                      color: GussoniBrand.borderSubtle,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    'Template',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                      color: GussoniBrand.textMuted,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              '${template.phases.length} fasi · $taskCount task',
                               style: const TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF1C1D1F),
-                              ),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 4,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: GussoniBrand.borderSubtle,
-                              ),
-                            ),
-                            child: Text(
-                              isStandard ? 'Standard' : 'Custom',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w700,
+                                fontSize: 12,
                                 color: GussoniBrand.textMuted,
                               ),
+                            ),
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: template.phases
+                                  .take(4)
+                                  .map(
+                                    (phase) => Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 5,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white,
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
+                                        border: Border.all(
+                                          color: GussoniBrand.borderSubtle,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        phase.name,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          color: Color(0xFF6B5A4E),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                  .toList(),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            tooltip: 'Modifica template',
+                            onPressed: () => _openProjectTemplateEditor(
+                              context,
+                              template: template,
+                            ),
+                            icon: const Icon(
+                              Icons.edit_outlined,
+                              size: 18,
+                              color: GussoniBrand.textMuted,
+                            ),
+                          ),
+                          IconButton(
+                            tooltip: 'Elimina template',
+                            onPressed: () =>
+                                _deleteProjectTemplate(context, template),
+                            icon: const Icon(
+                              Icons.delete_outline,
+                              size: 18,
+                              color: Color(0xFFC1B8AB),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '${template.phases.length} fasi · $taskCount task',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: GussoniBrand.textMuted,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: template.phases
-                            .take(4)
-                            .map(
-                              (phase) => Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 5,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  borderRadius: BorderRadius.circular(999),
-                                  border: Border.all(
-                                    color: GussoniBrand.borderSubtle,
-                                  ),
-                                ),
-                                child: Text(
-                                  phase.name,
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: Color(0xFF6B5A4E),
-                                  ),
-                                ),
-                              ),
-                            )
-                            .toList(),
-                      ),
                     ],
                   ),
-                ),
-                const SizedBox(width: 12),
-                if (isStandard)
-                  OutlinedButton.icon(
-                    onPressed: () => _openProjectTemplateEditor(
-                      context,
-                      seed: template.copyWith(
-                        id: '',
-                        name: '${template.name} copia',
-                        isDefault: false,
-                      ),
-                    ),
-                    icon: const Icon(Icons.copy_outlined, size: 16),
-                    label: const Text('Duplica'),
-                  )
-                else
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        tooltip: 'Modifica template',
-                        onPressed: () => _openProjectTemplateEditor(
-                          context,
-                          template: template,
-                        ),
-                        icon: const Icon(
-                          Icons.edit_outlined,
-                          size: 18,
-                          color: GussoniBrand.textMuted,
-                        ),
-                      ),
-                      IconButton(
-                        tooltip: 'Elimina template',
-                        onPressed: () =>
-                            _deleteProjectTemplate(context, template),
-                        icon: const Icon(
-                          Icons.delete_outline,
-                          size: 18,
-                          color: Color(0xFFC1B8AB),
-                        ),
-                      ),
-                    ],
-                  ),
-              ],
+                );
+              }).toList(),
             ),
-          );
-        }).toList(),
-      ),
     );
   }
 
@@ -3306,6 +3363,12 @@ class _TemplateTabState extends State<_TemplateTab> {
         StreamBuilder<List<EmailTemplate>>(
           stream: widget.templateRepo.watchEmailTemplates(widget.userId),
           builder: (context, snap) {
+            if (snap.hasError) {
+              return Text(
+                'Errore: ${snap.error}',
+                style: const TextStyle(color: Color(0xFFEF4444)),
+              );
+            }
             if (!snap.hasData)
               return const SizedBox(
                 height: 40,
@@ -3880,33 +3943,680 @@ class _EditableTemplatePhase {
   }
 }
 
+class _RolesTab extends StatefulWidget {
+  const _RolesTab({
+    required this.userId,
+    required this.teamInfo,
+    this.onTeamRolesChanged,
+  });
+
+  final String userId;
+  final TeamInfo? teamInfo;
+  final void Function(List<String> roles)? onTeamRolesChanged;
+
+  @override
+  State<_RolesTab> createState() => _RolesTabState();
+}
+
+class _RolesTabState extends State<_RolesTab> {
+  final _teamRepo = TeamRepository();
+  late List<String> _roles;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _roles = List<String>.from(
+      widget.teamInfo?.availableRoles ?? GussoniRoles.all,
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _RolesTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.teamInfo?.teamRoles != widget.teamInfo?.teamRoles) {
+      _roles = List<String>.from(
+        widget.teamInfo?.availableRoles ?? GussoniRoles.all,
+      );
+    }
+  }
+
+  Future<void> _save() async {
+    if (widget.teamInfo == null) return;
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await _teamRepo.updateTeamRoles(_roles);
+      widget.onTeamRolesChanged?.call(List<String>.from(_roles));
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Ruoli team salvati')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _addRole() async {
+    final ctrl = TextEditingController();
+    final role = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Nuovo ruolo'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          decoration: const InputDecoration(
+            labelText: 'Nome ruolo',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Annulla'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(ctrl.text.trim()),
+            child: const Text('Aggiungi'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    final value = role?.trim() ?? '';
+    if (value.isEmpty) return;
+    final exists = _roles.any(
+      (item) => item.toLowerCase() == value.toLowerCase(),
+    );
+    if (exists) {
+      setState(() => _error = 'Questo ruolo esiste già.');
+      return;
+    }
+    if (_roles.length >= 20) {
+      setState(() => _error = 'Puoi creare al massimo 20 ruoli.');
+      return;
+    }
+    setState(() {
+      _roles.add(value);
+      _error = null;
+    });
+  }
+
+  void _removeRole(String role) {
+    final inUse =
+        widget.teamInfo?.activeMembers.any((member) => member.role == role) ??
+        false;
+    if (inUse) {
+      setState(() {
+        _error =
+            'Non puoi eliminare "$role" perché è assegnato a uno o più membri.';
+      });
+      return;
+    }
+    setState(() {
+      _roles.remove(role);
+      _error = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: GussoniBrand.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Ruoli del team',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: GussoniBrand.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Crea i ruoli assegnabili ai membri del team. Owner resta sempre separato.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: GussoniBrand.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save_outlined, size: 16),
+                label: const Text('Salva'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Text(
+                '${_roles.length}/20 ruoli',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: GussoniBrand.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              OutlinedButton.icon(
+                onPressed: _saving ? null : _addRole,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Nuovo ruolo'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_roles.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: GussoniBrand.surfaceSubtle,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: GussoniBrand.border),
+              ),
+              child: const Text(
+                'Nessun ruolo configurato. Aggiungine almeno uno per assegnarlo ai membri.',
+                style: TextStyle(color: GussoniBrand.textSecondary),
+              ),
+            )
+          else
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: _roles
+                  .map(
+                    (role) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: GussoniBrand.border),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            role,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: GussoniBrand.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          InkWell(
+                            onTap: _saving ? null : () => _removeRole(role),
+                            child: const Icon(
+                              Icons.close_rounded,
+                              size: 16,
+                              color: GussoniBrand.error,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: const TextStyle(fontSize: 12, color: GussoniBrand.error),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CustomFieldsTab extends StatefulWidget {
+  const _CustomFieldsTab({
+    required this.userId,
+    required this.teamInfo,
+    this.onCustomFieldsChanged,
+  });
+
+  final String userId;
+  final TeamInfo? teamInfo;
+  final void Function(List<TeamCustomFieldDefinition> definitions)?
+  onCustomFieldsChanged;
+
+  @override
+  State<_CustomFieldsTab> createState() => _CustomFieldsTabState();
+}
+
+class _CustomFieldsTabState extends State<_CustomFieldsTab> {
+  final _teamRepo = TeamRepository();
+  late List<TeamCustomFieldDefinition> _definitions;
+  CustomFieldModule _module = CustomFieldModule.companies;
+  bool _saving = false;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _definitions = List<TeamCustomFieldDefinition>.from(
+      widget.teamInfo?.customFieldDefinitions ?? const [],
+    );
+  }
+
+  @override
+  void didUpdateWidget(covariant _CustomFieldsTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.teamInfo, widget.teamInfo)) {
+      _definitions = List<TeamCustomFieldDefinition>.from(
+        widget.teamInfo?.customFieldDefinitions ?? const [],
+      );
+    }
+  }
+
+  List<TeamCustomFieldDefinition> get _moduleFields =>
+      _definitions.where((field) => field.module == _module).toList();
+
+  Future<void> _save() async {
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
+    try {
+      await _teamRepo.updateTeamCustomFields(_definitions);
+      widget.onCustomFieldsChanged?.call(
+        List<TeamCustomFieldDefinition>.from(_definitions),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Custom field salvati')));
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  Future<void> _openEditor({TeamCustomFieldDefinition? field}) async {
+    final labelCtrl = TextEditingController(text: field?.label ?? '');
+    final maxLengthCtrl = TextEditingController(
+      text: (field?.maxLength ?? 255).toString(),
+    );
+    final optionsCtrl = TextEditingController(
+      text: field?.options.join('\n') ?? '',
+    );
+    var type = field?.type ?? CustomFieldType.text;
+
+    final result = await showDialog<TeamCustomFieldDefinition>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setModalState) => AlertDialog(
+          title: Text(
+            field == null ? 'Nuovo custom field' : 'Modifica custom field',
+          ),
+          content: SizedBox(
+            width: 460,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: labelCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Etichetta campo',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                DropdownButtonFormField<CustomFieldType>(
+                  value: type,
+                  decoration: const InputDecoration(
+                    labelText: 'Tipologia',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: CustomFieldType.values
+                      .map(
+                        (value) => DropdownMenuItem(
+                          value: value,
+                          child: Text(value.label),
+                        ),
+                      )
+                      .toList(),
+                  onChanged: (value) =>
+                      setModalState(() => type = value ?? CustomFieldType.text),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: maxLengthCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Lunghezza massima',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+                if (type == CustomFieldType.select) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: optionsCtrl,
+                    minLines: 4,
+                    maxLines: 6,
+                    decoration: const InputDecoration(
+                      labelText: 'Opzioni (una per riga)',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annulla'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final label = labelCtrl.text.trim();
+                if (label.isEmpty) return;
+                final options = optionsCtrl.text
+                    .split('\n')
+                    .map((item) => item.trim())
+                    .where((item) => item.isNotEmpty)
+                    .toList();
+                Navigator.of(ctx).pop(
+                  TeamCustomFieldDefinition(
+                    id:
+                        field?.id ??
+                        'cf-${DateTime.now().microsecondsSinceEpoch}',
+                    module: _module,
+                    label: label,
+                    type: type,
+                    maxLength:
+                        int.tryParse(
+                          maxLengthCtrl.text.trim(),
+                        )?.clamp(1, 5000) ??
+                        255,
+                    options: options,
+                  ),
+                );
+              },
+              child: const Text('Salva'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    labelCtrl.dispose();
+    maxLengthCtrl.dispose();
+    optionsCtrl.dispose();
+
+    if (result == null) return;
+    setState(() {
+      final index = _definitions.indexWhere((item) => item.id == result.id);
+      if (index >= 0) {
+        _definitions[index] = result;
+      } else {
+        _definitions.add(result);
+      }
+      _error = null;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = _moduleFields.length;
+    final canAdd = count < 10;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: GussoniBrand.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Campi personalizzati',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: GussoniBrand.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 4),
+                    Text(
+                      'Fino a 10 campi per modulo. Compariranno nella sezione "Campi personalizzati" durante aggiunta e modifica.',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: GussoniBrand.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              FilledButton.icon(
+                onPressed: _saving ? null : _save,
+                icon: _saving
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.save_outlined, size: 16),
+                label: const Text('Salva'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: CustomFieldModule.values.map((module) {
+              final selected = module == _module;
+              final moduleCount = _definitions
+                  .where((field) => field.module == module)
+                  .length;
+              return ChoiceChip(
+                label: Text('${module.label} $moduleCount'),
+                selected: selected,
+                onSelected: (_) => setState(() => _module = module),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Text(
+                '${_module.label} · $count/10',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: GussoniBrand.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              OutlinedButton.icon(
+                onPressed: (!_saving && canAdd) ? () => _openEditor() : null,
+                icon: const Icon(Icons.add, size: 16),
+                label: const Text('Nuovo campo'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_moduleFields.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: GussoniBrand.surfaceSubtle,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: GussoniBrand.border),
+              ),
+              child: const Text(
+                'Nessun campo configurato per questo modulo.',
+                style: TextStyle(color: GussoniBrand.textSecondary),
+              ),
+            )
+          else
+            ..._moduleFields.map(
+              (field) => Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: GussoniBrand.border),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            field.label,
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w700,
+                              color: GussoniBrand.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            field.type == CustomFieldType.select
+                                ? '${field.type.label} · ${field.options.length} opzioni'
+                                : '${field.type.label} · max ${field.maxLength} caratteri',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: GussoniBrand.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: 'Modifica',
+                      onPressed: _saving
+                          ? null
+                          : () => _openEditor(field: field),
+                      icon: const Icon(Icons.edit_outlined, size: 18),
+                    ),
+                    IconButton(
+                      tooltip: 'Elimina',
+                      onPressed: _saving
+                          ? null
+                          : () => setState(() {
+                              _definitions.removeWhere(
+                                (item) => item.id == field.id,
+                              );
+                            }),
+                      icon: const Icon(
+                        Icons.delete_outline_rounded,
+                        size: 18,
+                        color: GussoniBrand.error,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              _error!,
+              style: const TextStyle(fontSize: 12, color: GussoniBrand.error),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 // ─── TAB: Branding (solo Team Owner) ─────────────────────────────────────────
 
 class _BrandingTab extends StatefulWidget {
-  const _BrandingTab({required this.userId, required this.teamInfo});
+  const _BrandingTab({
+    required this.userId,
+    required this.teamInfo,
+    this.onBrandingChanged,
+  });
   final String userId;
   final TeamInfo teamInfo;
+  final void Function({String? brandLogoUrl, String? brandColor})?
+  onBrandingChanged;
 
   @override
   State<_BrandingTab> createState() => _BrandingTabState();
 }
 
 class _BrandingTabState extends State<_BrandingTab> {
+  final _teamRepo = TeamRepository();
   bool _uploadingLogo = false;
   bool _savingColor = false;
+  String? _logoUrl;
+  late Color _brandColor;
+  int _logoRevision = 0;
 
   // Colori preset
   static const _presets = [
-    Color(0xFF5B1205),
-    Color(0xFF10B981),
-    Color(0xFF3B82F6),
-    Color(0xFF7C3AED),
-    Color(0xFFEC4899),
-    Color(0xFFF59E0B),
-    Color(0xFFEF4444),
-    Color(0xFF06B6D4),
-    Color(0xFF6366F1),
-    Color(0xFF84CC16),
+    GussoniBrand.defaultPrimary,
+    GussoniBrand.accent,
+    Color(0xFF0A4D40),
+    Color(0xFF1F7A55),
+    Color(0xFF2E6F7E),
+    Color(0xFF406B5D),
+    Color(0xFF587A6B),
+    Color(0xFF7DA06E),
+    Color(0xFF31564F),
+    Color(0xFF6B847E),
     Color(0xFF64748B),
     Color(0xFF1C1D1F),
   ];
@@ -3916,7 +4626,30 @@ class _BrandingTabState extends State<_BrandingTab> {
   @override
   void initState() {
     super.initState();
-    _hexCtrl = TextEditingController(text: colorToHex(GussoniBrand.primary));
+    _syncFromWidget();
+    _hexCtrl = TextEditingController(text: colorToHex(_brandColor));
+  }
+
+  @override
+  void didUpdateWidget(covariant _BrandingTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.teamInfo.brandLogoUrl != widget.teamInfo.brandLogoUrl ||
+        oldWidget.teamInfo.brandColor != widget.teamInfo.brandColor) {
+      _syncFromWidget();
+      _hexCtrl.text = colorToHex(_brandColor);
+    }
+  }
+
+  void _syncFromWidget() {
+    _logoUrl = widget.teamInfo.brandLogoUrl;
+    _brandColor =
+        hexToColor(widget.teamInfo.brandColor) ?? GussoniBrand.defaultPrimary;
+  }
+
+  String? _cacheBustedLogoUrl(String? url) {
+    if (url == null || url.trim().isEmpty) return null;
+    final sep = url.contains('?') ? '&' : '?';
+    return '$url${sep}v=$_logoRevision';
   }
 
   @override
@@ -3934,60 +4667,108 @@ class _BrandingTabState extends State<_BrandingTab> {
     final bytes = result.files.first.bytes;
     if (bytes == null) return;
     setState(() => _uploadingLogo = true);
+    final previousLogo = _logoUrl;
     try {
       final url = await uploadAssetImage(
         bytes: bytes,
         filename: result.files.first.name,
         folder: 'brand',
       );
-      await _saveToFirestore(logoUrl: url);
-      GussoniBrand.primary;
+      if (mounted) {
+        setState(() {
+          _logoUrl = url;
+          _logoRevision += 1;
+        });
+      }
+      await _saveBranding(logoUrl: url);
+      widget.onBrandingChanged?.call(
+        brandLogoUrl: url,
+        brandColor: colorToHex(_brandColor),
+      );
       if (mounted)
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('Logo aggiornato.')));
+    } catch (e) {
+      if (mounted) {
+        setState(() => _logoUrl = previousLogo);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore aggiornamento logo: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _uploadingLogo = false);
     }
   }
 
   Future<void> _removeLogo() async {
-    await _saveToFirestore(removeLogo: true);
-    GussoniBrand.primary;
+    final previousLogo = _logoUrl;
+    if (mounted) {
+      setState(() {
+        _logoUrl = null;
+        _logoRevision += 1;
+      });
+    }
+    try {
+      await _saveBranding(removeLogo: true);
+      widget.onBrandingChanged?.call(
+        brandLogoUrl: null,
+        brandColor: colorToHex(_brandColor),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() => _logoUrl = previousLogo);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Errore rimozione logo: $e')));
+      }
+    }
   }
 
   Future<void> _applyColor(Color color) async {
-    setState(() => _savingColor = true);
+    final previousColor = _brandColor;
+    final previousHex = _hexCtrl.text;
+    setState(() {
+      _savingColor = true;
+      _brandColor = color;
+      _hexCtrl.text = colorToHex(color);
+    });
     try {
       final hex = colorToHex(color);
-      _hexCtrl.text = hex;
-      await _saveToFirestore(brandColor: hex);
-      GussoniBrand.primary;
+      await _saveBranding(brandColor: hex);
+      widget.onBrandingChanged?.call(brandLogoUrl: _logoUrl, brandColor: hex);
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _brandColor = previousColor;
+          _hexCtrl.text = previousHex;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Errore aggiornamento colore: $e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _savingColor = false);
     }
   }
 
-  Future<void> _saveToFirestore({
+  Future<void> _saveBranding({
     String? logoUrl,
     String? brandColor,
     bool removeLogo = false,
   }) async {
-    final Map<String, dynamic> data = {};
-    if (removeLogo) data['brandLogoUrl'] = FieldValue.delete();
-    if (logoUrl != null) data['brandLogoUrl'] = logoUrl;
-    if (brandColor != null) data['brandColor'] = brandColor;
-    if (data.isEmpty) return;
-    await FirebaseFirestore.instance
-        .collection('teams')
-        .doc(widget.teamInfo.id)
-        .set(data, SetOptions(merge: true));
+    await _teamRepo.updateTeamBranding(
+      widget.teamInfo.id,
+      brandLogoUrl: logoUrl,
+      brandColor: brandColor,
+      removeLogo: removeLogo,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final currentLogo = null;
-    final currentColor = GussoniBrand.primary;
+    final currentLogo = _cacheBustedLogoUrl(_logoUrl);
+    final currentColor = _brandColor;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -4005,7 +4786,7 @@ class _BrandingTabState extends State<_BrandingTab> {
                 width: 180,
                 height: 64,
                 decoration: BoxDecoration(
-                  color: GussoniBrand.sidebarBg,
+                  color: GussoniBrand.surface,
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(color: GussoniBrand.borderSubtle),
                 ),
@@ -4174,7 +4955,7 @@ class _BrandingTabState extends State<_BrandingTab> {
                           v.trim().startsWith('#') ? v.trim() : '#${v.trim()}',
                         );
                         if (color != null) {
-                          GussoniBrand.primary;
+                          setState(() => _brandColor = color);
                         }
                       },
                     ),
@@ -4194,7 +4975,7 @@ class _BrandingTabState extends State<_BrandingTab> {
                   ),
                   const SizedBox(width: 8),
                   TextButton(
-                    onPressed: () => _applyColor(GussoniBrand.primary),
+                    onPressed: () => _applyColor(GussoniBrand.defaultPrimary),
                     child: const Text('Ripristina default'),
                   ),
                 ],
@@ -4209,18 +4990,7 @@ class _BrandingTabState extends State<_BrandingTab> {
   Widget _nexoraLogoPreview() => Row(
     mainAxisAlignment: MainAxisAlignment.center,
     mainAxisSize: MainAxisSize.min,
-    children: [
-      Image.asset(GussoniBrand.logoWhitePath, height: 28),
-      const SizedBox(width: 6),
-      const Text(
-        'Gussoni CRM',
-        style: TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    ],
+    children: [Image.asset(GussoniBrand.logoWhitePath, height: 28)],
   );
 }
 
@@ -4244,6 +5014,64 @@ class _PianoTeamTab extends StatefulWidget {
 }
 
 class _PianoTeamTabState extends State<_PianoTeamTab> {
+  final _teamRepo = TeamRepository();
+
+  Future<void> _editMemberRole(TeamMember member) async {
+    final role = await showDialog<String>(
+      context: context,
+      builder: (ctx) {
+        String? selected = member.role.isNotEmpty ? member.role : null;
+        return StatefulBuilder(
+          builder: (ctx, setModalState) => AlertDialog(
+            title: Text(
+              'Ruolo di ${member.displayName.isNotEmpty ? member.displayName : member.email}',
+            ),
+            content: DropdownButtonFormField<String>(
+              value: selected,
+              hint: const Text('Seleziona ruolo'),
+              decoration: const InputDecoration(
+                labelText: 'Ruolo',
+                border: OutlineInputBorder(),
+              ),
+              items: widget.teamInfo.availableRoles
+                  .map(
+                    (role) => DropdownMenuItem(value: role, child: Text(role)),
+                  )
+                  .toList(),
+              onChanged: (value) => setModalState(() => selected = value),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Annulla'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.of(ctx).pop(selected),
+                child: const Text('Salva'),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (role == null || role.trim().isEmpty || role == member.role) return;
+    await _teamRepo.addTeamMember(
+      teamId: widget.teamInfo.id,
+      member: TeamMember(
+        userId: member.userId,
+        email: member.email,
+        displayName: member.displayName,
+        role: role.trim(),
+        status: member.status,
+        joinedAt: member.joinedAt,
+      ),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('Ruolo membro aggiornato')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final members = widget.teamInfo.activeMembers;
@@ -4327,6 +5155,16 @@ class _PianoTeamTabState extends State<_PianoTeamTab> {
                           color: GussoniBrand.textMuted,
                         ),
                       ),
+                    if (!isOwner)
+                      IconButton(
+                        icon: const Icon(
+                          Icons.badge_outlined,
+                          size: 18,
+                          color: GussoniBrand.textSecondary,
+                        ),
+                        tooltip: 'Modifica ruolo',
+                        onPressed: () => _editMemberRole(m),
+                      ),
                     if (!isOwner && !isMe && widget.onRemoveTeamMember != null)
                       IconButton(
                         icon: const Icon(
@@ -4375,16 +5213,24 @@ class _PianoTeamTabState extends State<_PianoTeamTab> {
   void _showAddMemberDialog(BuildContext context) {
     showDialog<void>(
       context: context,
-      builder: (_) =>
-          _AddMemberDialog(teamId: widget.teamInfo.id, repo: widget.adminRepo),
+      builder: (_) => _AddMemberDialog(
+        teamId: widget.teamInfo.id,
+        repo: widget.adminRepo,
+        availableRoles: widget.teamInfo.availableRoles,
+      ),
     );
   }
 }
 
 class _AddMemberDialog extends StatefulWidget {
-  const _AddMemberDialog({required this.teamId, required this.repo});
+  const _AddMemberDialog({
+    required this.teamId,
+    required this.repo,
+    required this.availableRoles,
+  });
   final String teamId;
   final AdminRepository repo;
+  final List<String> availableRoles;
   @override
   State<_AddMemberDialog> createState() => _AddMemberDialogState();
 }
@@ -4480,7 +5326,7 @@ class _AddMemberDialogState extends State<_AddMemberDialog> {
                     value: _selectedRole,
                     hint: const Text('Ruolo *'),
                     decoration: const InputDecoration(labelText: 'Ruolo *'),
-                    items: GussoniRoles.all
+                    items: widget.availableRoles
                         .map((r) => DropdownMenuItem(value: r, child: Text(r)))
                         .toList(),
                     onChanged: (v) => setState(() => _selectedRole = v),

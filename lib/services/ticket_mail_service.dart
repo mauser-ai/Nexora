@@ -76,7 +76,7 @@ class TicketMailService {
   );
   static const String _apiOrigin = String.fromEnvironment(
     'ARCHIVE_API_ORIGIN',
-    defaultValue: 'https://business.gweb.agency',
+    defaultValue: 'https://nexora.sviluppo.host',
   );
   static const String _hookKey = String.fromEnvironment(
     'TICKET_HOOK_KEY',

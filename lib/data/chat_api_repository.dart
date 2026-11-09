@@ -16,7 +16,7 @@ class ChatApiRepository {
   final ApiClient _api;
   final http.Client _http;
 
-  static const String _baseUrl = 'https://gussoni.sviluppo.host/api/chat';
+  static const String _baseUrl = 'https://nexora.sviluppo.host/api/chat';
 
   Uri _buildUri(String script, [Map<String, String>? query]) {
     final base = '$_baseUrl/$script';
