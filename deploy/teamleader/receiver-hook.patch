@@ -1,0 +1,14 @@
+--- a/scripts/teamleader_webhook.py
++++ b/scripts/teamleader_webhook.py
+@@ -194,6 +194,11 @@
+             enqueue(payload)
+         except Exception as exc:
+             print(f"n8n fan-out failed (monitor unaffected): {exc}", flush=True)
++        try:
++            from nexora_bridge import enqueue as enqueue_nexora
++            enqueue_nexora(payload)
++        except Exception as exc:
++            print(f"Nexora outbox failed (monitor and n8n unaffected): {type(exc).__name__}", flush=True)
+         event_type = str(payload.get("type") or payload.get("event") or "webhook")
+         subject = payload.get("subject") or payload.get("data") or {}
+         if not isinstance(subject, dict):

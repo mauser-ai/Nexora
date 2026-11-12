@@ -1,0 +1,8 @@
+Options -MultiViews
+RewriteEngine On
+
+# Let Flutter serve client-side routes such as /app and /login.
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+RewriteRule ^ index.html [L]

@@ -199,7 +199,6 @@ class TeamRepository {
   final FirebaseFirestore _db;
   final ApiClient _api;
   static const int _maxMemberTaskDocs = 1200;
-  static const int _maxMemberTrackDocs = 1500;
 
   /// Probe sull'API team MySQL (null = non verificato).
   static bool? _apiMode;
@@ -528,21 +527,6 @@ class TeamRepository {
     } catch (_) {
       // Qualsiasi errore ignorato — può essere invitata manualmente
     }
-  }
-
-  // ── Watch a member's time tracks (read-only for team visibility) ──
-
-  Stream<List<Map<String, dynamic>>> watchMemberTimeTracks(String memberId) {
-    return _db
-        .collection('users')
-        .doc(memberId)
-        .collection('timeTracks')
-        .orderBy('startAt', descending: true)
-        .limit(_maxMemberTrackDocs)
-        .snapshots()
-        .map(
-          (snap) => snap.docs.map((d) => {'id': d.id, ...d.data()}).toList(),
-        );
   }
 
   // ── Watch a member's tasks (read-only for team visibility) ──

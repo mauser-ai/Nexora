@@ -1,0 +1,17 @@
+<?php
+return [
+    'key' => '', // Same random key as the Raspberry; at least 32 bytes.
+    'team_id' => 'team-LECUVITaSJWIyD8xNR79',
+    'apply' => false, // Keep false for the first authenticated preview.
+    'time_zone' => 'Europe/Rome',
+    'reverse_enabled' => false,
+    'reverse_modules' => ['companies','contacts','deals','projects','phases','tasks','timetracking'],
+    'modules' => ['companies', 'contacts', 'deals', 'projects', 'tasks', 'timetracking'],
+    'operator_map' => [
+        'c2a80468-0ae0-0060-b759-e7fdd186ce6b' => 'LkuRs07bTNdPZjGC7Z902cbLy883',
+        'ad8760c2-f2fc-0e49-9f5e-ca0397e116ba' => 'JG5oh5q5axVBrtwYHKDwDc4jk7T2',
+        '8df54a33-ba6d-0f4a-b549-43198dd2f6e8' => 'JpNmy5BGXLTGbFGqHtaHfKFbM2g2',
+        'ba3dfb99-c488-06e9-9246-e095a6c2f6e9' => 'w8yaP4wTJPU65xQ6W7gOEzk7TXw2',
+        '9abf09d6-78ad-0acb-b15c-9baafd74d28b' => 'VWNF38LuYbcg4c6LCbYbTWIQ7Gt2',
+    ],
+];

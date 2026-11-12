@@ -1,0 +1,6 @@
+{
+  "enabled": false,
+  "url": "https://nexora.sviluppo.host/api/teamleader/index.php",
+  "key": "",
+  "modules": ["companies", "contacts", "deals", "projects", "phases", "tasks", "timetracking"]
+}

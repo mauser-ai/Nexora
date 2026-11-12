@@ -74,7 +74,9 @@ function bool_val($v, bool $default = false): bool {
 function to_dt($v): ?string {
     if (empty($v)) return null;
     if (is_numeric($v)) return date('Y-m-d H:i:s', (int)($v / 1000));
-    return substr((string)$v, 0, 19);
+    // Flutter sends ISO-8601 values with a `T`; MySQL DATETIME expects a space.
+    // Keep the local wall-clock portion used by the CRM and discard timezone data.
+    return str_replace('T', ' ', substr((string)$v, 0, 19));
 }
 
 function to_date($v): ?string {

@@ -8,6 +8,7 @@ import '../../data/api_workspace_repository.dart';
 import '../../data/team_repository.dart';
 import '../../models/desktop_timer_entry.dart';
 import '../../models/domain_models.dart';
+import '../../models/time_track_filters.dart';
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
 
@@ -27,7 +28,6 @@ class SegantempoGussoniScreen extends StatefulWidget {
     required this.onStopTimer,
     required this.onOpenPendingTimer,
     required this.onDiscardPendingTimer,
-    this.memberTimeTracks = const {},
     this.teamInfo,
   });
 
@@ -40,7 +40,6 @@ class SegantempoGussoniScreen extends StatefulWidget {
   final void Function(DesktopTimerEntry timer) onStopTimer;
   final void Function(DesktopTimerEntry timer) onOpenPendingTimer;
   final void Function(DesktopTimerEntry timer) onDiscardPendingTimer;
-  final Map<String, List<TimeTrack>> memberTimeTracks;
   final TeamInfo? teamInfo;
 
   @override
@@ -51,7 +50,7 @@ class SegantempoGussoniScreen extends StatefulWidget {
 class _SegantempoGussoniScreenState extends State<SegantempoGussoniScreen> {
   _ViewMode _mode = _ViewMode.week;
   DateTime _anchor = DateTime.now();
-  String? _filterUserId; // null = current user
+  String? _filterUserId; // null = shared team workspace
 
   final _eur = NumberFormat.currency(
     locale: 'it_IT',
@@ -101,14 +100,11 @@ class _SegantempoGussoniScreenState extends State<SegantempoGussoniScreen> {
 
   // ── data ──
 
-  String get _activeUserId => _filterUserId ?? widget.userId;
-
-  List<TimeTrack> get _userTracks {
-    if (_filterUserId == null || _filterUserId == widget.userId) {
-      return widget.workspace.timeTracks;
-    }
-    return widget.memberTimeTracks[_filterUserId] ?? [];
-  }
+  List<TimeTrack> get _userTracks => timeTracksForUser(
+    widget.workspace.timeTracks,
+    _filterUserId,
+    legacyOwnerId: widget.userId,
+  );
 
   List<DateTime> get _visibleDays {
     switch (_mode) {
@@ -394,6 +390,7 @@ class _SegantempoGussoniScreenState extends State<SegantempoGussoniScreen> {
             : SizedBox(
                 width: compact ? double.infinity : 180,
                 child: DropdownButtonFormField<String?>(
+                  isExpanded: true,
                   value: _filterUserId,
                   decoration: const InputDecoration(
                     border: OutlineInputBorder(),
@@ -407,12 +404,11 @@ class _SegantempoGussoniScreenState extends State<SegantempoGussoniScreen> {
                     DropdownMenuItem(
                       value: null,
                       child: Text(
-                        _currentUserName(),
+                        'Tutto il team',
                         overflow: TextOverflow.ellipsis,
                       ),
                     ),
                     ...members
-                        .where((m) => m.userId != widget.userId)
                         .map(
                           (m) => DropdownMenuItem(
                             value: m.userId,
@@ -513,13 +509,6 @@ class _SegantempoGussoniScreenState extends State<SegantempoGussoniScreen> {
     );
   }
 
-  String _currentUserName() {
-    final me = widget.teamInfo?.activeMembers
-        .where((m) => m.userId == widget.userId)
-        .firstOrNull;
-    return me?.displayName ?? 'Tu';
-  }
-
   // ── Stats bar ──
 
   Widget _buildStatsBar() {
@@ -541,29 +530,31 @@ class _SegantempoGussoniScreenState extends State<SegantempoGussoniScreen> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Incidenza fatturabile',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: GussoniBrand.textMuted,
-                          fontWeight: FontWeight.w600,
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text(
+                          'Incidenza fatturabile',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: GussoniBrand.textMuted,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${(_billableRatio * 100).toStringAsFixed(0)}%',
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: GussoniBrand.textPrimary,
-                          height: 1,
+                        const SizedBox(height: 4),
+                        Text(
+                          '${(_billableRatio * 100).toStringAsFixed(0)}%',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: GussoniBrand.textPrimary,
+                            height: 1,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -1037,11 +1028,14 @@ class _DaySectionState extends State<_DaySection> {
   @override
   Widget build(BuildContext context) {
     final dayLabel = DateFormat('EEE d MMM', 'it').format(widget.day);
-    final firstTrack = widget.tracks.firstOrNull;
-    final lastTrack = widget.tracks.lastOrNull;
+    final clockTracks = widget.tracks
+        .where((track) => track.tipo != 'teamleader_duration')
+        .toList();
+    final firstTrack = clockTracks.firstOrNull;
+    final lastTrack = clockTracks.lastOrNull;
     final rangeLabel = firstTrack != null && lastTrack != null
         ? '${widget.formatTime(firstTrack.startAt)} – ${widget.formatTime(lastTrack.endAt)}'
-        : '—';
+        : widget.tracks.isNotEmpty ? 'Solo durata' : '—';
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -1319,7 +1313,9 @@ class _TrackRow extends StatelessWidget {
           const SizedBox(width: 12),
           // ── Time range + duration ──
           Text(
-            '${formatHm(track.hours)} (${formatTime(track.startAt)} – ${formatTime(track.endAt)})',
+            track.tipo == 'teamleader_duration'
+                ? '${formatHm(track.hours)} · Solo durata'
+                : '${formatHm(track.hours)} (${formatTime(track.startAt)} – ${formatTime(track.endAt)})',
             style: const TextStyle(
               fontSize: 12,
               color: GussoniBrand.textSecondary,
@@ -1573,21 +1569,22 @@ class _MobileStatsStrip extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          // Stat row
-          Row(
+          // Keep statistics readable on narrow screens and with long values.
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _StatPill(
                 label: 'Fatturabile',
                 value: formatHm(billableHours),
                 color: GussoniBrand.primary,
               ),
-              const SizedBox(width: 8),
               _StatPill(
                 label: 'Non fatt.',
                 value: formatHm(nonBillableHours),
                 color: GussoniBrand.textMuted,
               ),
-              const Spacer(),
               Text(
                 '${(billableRatio * 100).toStringAsFixed(0)}%',
                 style: TextStyle(
@@ -2285,9 +2282,10 @@ class _MobileNavDelegate extends SliverPersistentHeaderDelegate {
     bool overlapsContent,
   ) {
     return Container(
-      color: GussoniBrand.surface,
+      height: maxExtent,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
+        color: GussoniBrand.surface,
         border: Border(bottom: BorderSide(color: GussoniBrand.border)),
       ),
       child: Row(

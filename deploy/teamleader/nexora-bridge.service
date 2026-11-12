@@ -1,0 +1,14 @@
+[Unit]
+Description=Nexora Teamleader independent outbox
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/agency-briefing/.venv/bin/python %h/agency-briefing/scripts/nexora_bridge.py run
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

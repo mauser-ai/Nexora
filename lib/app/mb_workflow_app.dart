@@ -38,6 +38,7 @@ import '../gussoni/screens/progetti_screen.dart';
 import '../gussoni/screens/task_screen.dart';
 import '../gussoni/screens/finanze_screen.dart';
 import '../gussoni/screens/segnatempo_screen.dart';
+import '../models/time_track_filters.dart';
 import '../gussoni/screens/statistiche_screen.dart';
 import '../gussoni/screens/chat_screen.dart';
 import '../gussoni/screens/nexora_ai_chat_bubble.dart';
@@ -1366,10 +1367,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
   // ── Team state ──
   TeamInfo? _teamInfo; // info team corrente
-  Map<String, List<TimeTrack>> _memberTimeTracks = {}; // memberId → tracks
   Map<String, List<WorkTask>> _memberTasksCache = {}; // memberId -> tasks
-  final Map<String, StreamSubscription<List<Map<String, dynamic>>>>
-  _memberTimeTrackSubs = {};
   final Map<String, StreamSubscription<List<Map<String, dynamic>>>>
   _allMembersTaskSubs = {};
   StreamSubscription<List<Map<String, dynamic>>>? _selectedMemberTaskSub;
@@ -1457,19 +1455,11 @@ class _DashboardPageState extends State<DashboardPage> {
   // ── Team helpers ──
 
   // Gestione cache/sottoscrizioni team (on-demand)
-  void _loadMemberTimeTracks(TeamInfo teamInfo) {
+  void _syncMemberTaskCaches(TeamInfo teamInfo) {
     final activeMemberIds = teamInfo.activeMembers
         .map((member) => member.userId)
         .where((id) => id != widget.user.uid)
         .toSet();
-
-    final staleTrackSubs = _memberTimeTrackSubs.keys
-        .where((id) => !activeMemberIds.contains(id))
-        .toList();
-    for (final memberId in staleTrackSubs) {
-      _memberTimeTrackSubs.remove(memberId)?.cancel();
-      _memberTimeTracks.remove(memberId);
-    }
 
     final staleTaskSubs = _allMembersTaskSubs.keys
         .where((id) => !activeMemberIds.contains(id))
@@ -1485,7 +1475,11 @@ class _DashboardPageState extends State<DashboardPage> {
   WorkspaceSnapshot _workspaceForSelectedMember(WorkspaceSnapshot myWorkspace) {
     final memberId = _selectedMemberId;
     if (memberId == null || memberId == widget.user.uid) return myWorkspace;
-    final memberTracks = _memberTimeTracks[memberId] ?? [];
+    final memberTracks = timeTracksForUser(
+      myWorkspace.timeTracks,
+      memberId,
+      legacyOwnerId: widget.user.uid,
+    );
     return myWorkspace.copyWith(timeTracks: memberTracks);
   }
 
@@ -1707,7 +1701,7 @@ class _DashboardPageState extends State<DashboardPage> {
         GussoniBrand.applyAccent(teamAccent);
       }
       if (teamInfo != null) {
-        _loadMemberTimeTracks(teamInfo);
+        _syncMemberTaskCaches(teamInfo);
       }
     });
     unawaited(_cleanupBacklogTasksIfNeeded());
@@ -1972,7 +1966,11 @@ class _DashboardPageState extends State<DashboardPage> {
       projectId: timer.projectId,
       startAt: timer.startedAt,
       endAt: endAt,
-      description: timer.description.trim(),
+      // Keep the visible timer label and the sync description aligned.
+      // Teamleader receives the latter field.
+      description: timer.description.trim().isNotEmpty
+          ? timer.description.trim()
+          : baseName,
     );
   }
 
@@ -1991,62 +1989,8 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  void _syncTeamTimeTrackSubscriptions() {
-    final shouldWatchTracks = selectedIndex == 7;
-    final teamInfo = _teamInfo;
-    final selectedMemberId = _selectedMemberId;
-    if (!shouldWatchTracks ||
-        teamInfo == null ||
-        selectedMemberId == null ||
-        selectedMemberId == widget.user.uid) {
-      for (final sub in _memberTimeTrackSubs.values) {
-        sub.cancel();
-      }
-      _memberTimeTrackSubs.clear();
-      return;
-    }
-
-    final activeMemberIds = teamInfo.activeMembers
-        .map((m) => m.userId)
-        .where((id) => id != widget.user.uid)
-        .toSet();
-    if (!activeMemberIds.contains(selectedMemberId)) {
-      for (final sub in _memberTimeTrackSubs.values) {
-        sub.cancel();
-      }
-      _memberTimeTrackSubs.clear();
-      _memberTimeTracks.remove(selectedMemberId);
-      return;
-    }
-
-    final stale = _memberTimeTrackSubs.keys
-        .where((id) => id != selectedMemberId)
-        .toList();
-    for (final memberId in stale) {
-      _memberTimeTrackSubs.remove(memberId)?.cancel();
-    }
-
-    _memberTimeTrackSubs.putIfAbsent(
-      selectedMemberId,
-      () => _teamRepository.watchMemberTimeTracks(selectedMemberId).listen((
-        rawTracks,
-      ) {
-        if (!mounted) return;
-        final tracks = rawTracks.map((m) {
-          final id = m['id'] as String;
-          final data = Map<String, dynamic>.from(m)..remove('id');
-          return TimeTrack.fromMap(id, {...data, 'userId': selectedMemberId});
-        }).toList();
-        setState(() {
-          _memberTimeTracks = {..._memberTimeTracks, selectedMemberId: tracks};
-        });
-      }),
-    );
-  }
-
   void _syncTeamSubscriptions() {
     _syncTeamTaskSubscriptions();
-    _syncTeamTimeTrackSubscriptions();
   }
 
   bool get _isViewingOtherMember =>
@@ -3208,7 +3152,6 @@ class _DashboardPageState extends State<DashboardPage> {
         onStopTimer: _stopDesktopTimer,
         onOpenPendingTimer: _openPendingDesktopTimer,
         onDiscardPendingTimer: _discardPendingDesktopTimer,
-        memberTimeTracks: _memberTimeTracks,
         teamInfo: _teamInfo,
       ),
     );
@@ -4793,9 +4736,6 @@ class _DashboardPageState extends State<DashboardPage> {
     _crmDataSubscription?.cancel();
     _uiStateDebounce?.cancel();
     _googleSyncDebounce?.cancel();
-    for (final sub in _memberTimeTrackSubs.values) {
-      sub.cancel();
-    }
     _selectedMemberTaskSub?.cancel();
     for (final sub in _allMembersTaskSubs.values) {
       sub.cancel();
@@ -7247,7 +7187,6 @@ class _DashboardPageState extends State<DashboardPage> {
                           onStopTimer: _stopDesktopTimer,
                           onOpenPendingTimer: _openPendingDesktopTimer,
                           onDiscardPendingTimer: _discardPendingDesktopTimer,
-                          memberTimeTracks: _memberTimeTracks,
                           teamInfo: _teamInfo,
                         ),
                       )
@@ -14439,6 +14378,8 @@ class _TimeTrackCreationCardState extends State<TimeTrackCreationCard> {
                                                       'tt-${DateTime.now().microsecondsSinceEpoch}',
                                             taskId: _taskId ?? '',
                                             name: _nameController.text.trim(),
+                                            description: _nameController.text
+                                                .trim(),
                                             companyId: _companyId ?? '',
                                             projectId: _projectId ?? '',
                                             startAt: startAt,
@@ -14551,6 +14492,8 @@ class _TimeTrackCreationCardState extends State<TimeTrackCreationCard> {
                                                     'tt-${DateTime.now().microsecondsSinceEpoch}',
                                           taskId: _taskId ?? '',
                                           name: _nameController.text.trim(),
+                                          description: _nameController.text
+                                              .trim(),
                                           companyId: _companyId ?? '',
                                           projectId: _projectId ?? '',
                                           startAt: startAt,
